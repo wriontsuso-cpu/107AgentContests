@@ -1,0 +1,191 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-08-20",
+  "categories": [
+    {
+      "id": "root",
+      "parent_id": null,
+      "name": "全部资源",
+      "level": 0,
+      "path": "全部资源",
+      "sort_order": 0,
+      "description": "根节点，用于前端树展示"
+    },
+    {
+      "id": "campus_life",
+      "parent_id": "root",
+      "name": "校园生活",
+      "level": 1,
+      "path": "全部资源/校园生活",
+      "sort_order": 1
+    },
+    {
+      "id": "campus_life_aid",
+      "parent_id": "campus_life",
+      "name": "奖助与勤工",
+      "level": 2,
+      "path": "全部资源/校园生活/奖助与勤工",
+      "sort_order": 1
+    },
+    {
+      "id": "campus_life_club",
+      "parent_id": "campus_life",
+      "name": "社团与二课",
+      "level": 2,
+      "path": "全部资源/校园生活/社团与二课",
+      "sort_order": 2
+    },
+    {
+      "id": "campus_life_freshman",
+      "parent_id": "campus_life",
+      "name": "新生指南",
+      "level": 2,
+      "path": "全部资源/校园生活/新生指南",
+      "sort_order": 3
+    },
+    {
+      "id": "academic",
+      "parent_id": "root",
+      "name": "学术服务",
+      "level": 1,
+      "path": "全部资源/学术服务",
+      "sort_order": 2
+    },
+    {
+      "id": "academic_library",
+      "parent_id": "academic",
+      "name": "图书馆与数据库",
+      "level": 2,
+      "path": "全部资源/学术服务/图书馆与数据库",
+      "sort_order": 1
+    },
+    {
+      "id": "academic_teach",
+      "parent_id": "academic",
+      "name": "教务与选课",
+      "level": 2,
+      "path": "全部资源/学术服务/教务与选课",
+      "sort_order": 2
+    },
+    {
+      "id": "academic_grad",
+      "parent_id": "academic",
+      "name": "研究生培养",
+      "level": 2,
+      "path": "全部资源/学术服务/研究生培养",
+      "sort_order": 3
+    },
+    {
+      "id": "opportunity",
+      "parent_id": "root",
+      "name": "发展机会",
+      "level": 1,
+      "path": "全部资源/发展机会",
+      "sort_order": 3
+    },
+    {
+      "id": "opportunity_competition",
+      "parent_id": "opportunity",
+      "name": "竞赛与科创",
+      "level": 2,
+      "path": "全部资源/发展机会/竞赛与科创",
+      "sort_order": 1
+    },
+    {
+      "id": "opportunity_job",
+      "parent_id": "opportunity",
+      "name": "就业与实习",
+      "level": 2,
+      "path": "全部资源/发展机会/就业与实习",
+      "sort_order": 2
+    },
+    {
+      "id": "opportunity_abroad",
+      "parent_id": "opportunity",
+      "name": "留学与出境交流",
+      "level": 2,
+      "path": "全部资源/发展机会/留学与出境交流",
+      "sort_order": 3
+    },
+    {
+      "id": "opportunity_conference",
+      "parent_id": "opportunity",
+      "name": "会议与学术活动",
+      "level": 2,
+      "path": "全部资源/发展机会/会议与学术活动",
+      "sort_order": 4
+    },
+    {
+      "id": "service",
+      "parent_id": "root",
+      "name": "办事服务",
+      "level": 1,
+      "path": "全部资源/办事服务",
+      "sort_order": 4
+    },
+    {
+      "id": "service_guide",
+      "parent_id": "service",
+      "name": "证明与流程",
+      "level": 2,
+      "path": "全部资源/办事服务/证明与流程",
+      "sort_order": 1
+    },
+    {
+      "id": "service_portal",
+      "parent_id": "service",
+      "name": "网络邮箱与门户",
+      "level": 2,
+      "path": "全部资源/办事服务/网络邮箱与门户",
+      "sort_order": 2
+    },
+    {
+      "id": "benefits",
+      "parent_id": "root",
+      "name": "免费权益",
+      "level": 1,
+      "path": "全部资源/免费权益",
+      "sort_order": 5
+    },
+    {
+      "id": "benefits_software",
+      "parent_id": "benefits",
+      "name": "软件与会员",
+      "level": 2,
+      "path": "全部资源/免费权益/软件与会员",
+      "sort_order": 1
+    },
+    {
+      "id": "events",
+      "parent_id": "root",
+      "name": "活动资讯",
+      "level": 1,
+      "path": "全部资源/活动资讯",
+      "sort_order": 6
+    },
+    {
+      "id": "events_lecture",
+      "parent_id": "events",
+      "name": "讲座与活动",
+      "level": 2,
+      "path": "全部资源/活动资讯/讲座与活动",
+      "sort_order": 1
+    },
+    {
+      "id": "events_notice",
+      "parent_id": "events",
+      "name": "校级与院级通知",
+      "level": 2,
+      "path": "全部资源/活动资讯/校级与院级通知",
+      "sort_order": 2
+    },
+    {
+      "id": "events_media",
+      "parent_id": "events",
+      "name": "媒体关注",
+      "level": 2,
+      "path": "全部资源/活动资讯/媒体关注",
+      "sort_order": 3
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+output/
+backup/
+db/*.db
+secrets/
+debug_*.json
+debug_*.html
+debug_*.txt
+__pycache__/
+*.pyc
+.venv/
+.env

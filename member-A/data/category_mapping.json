@@ -1,0 +1,27 @@
+{
+  "description": "将爬虫/精选原始栏目映射到分类树 v1 的 category_id",
+  "mapping": {
+    "奖助学金": "campus_life_aid",
+    "勤工助学": "campus_life_aid",
+    "二课/团学活动": "campus_life_club",
+    "新生事务": "campus_life_freshman",
+    "学工通知": "events_notice",
+    "图书馆资源": "academic_library",
+    "教务选课": "academic_teach",
+    "研究生培养": "academic_grad",
+    "竞赛/科创": "opportunity_competition",
+    "就业实习": "opportunity_job",
+    "留学/国际交流": "opportunity_abroad",
+    "留学/出境交流": "opportunity_abroad",
+    "会议/学术交流": "opportunity_conference",
+    "学术科研": "opportunity_conference",
+    "办事指南": "service_guide",
+    "网站入口": "service_portal",
+    "免费软件/会员": "benefits_software",
+    "校园活动": "events_lecture",
+    "校级通知": "events_notice",
+    "公示公告": "events_notice",
+    "媒体关注": "events_media"
+  },
+  "default_category_id": "events_lecture"
+}

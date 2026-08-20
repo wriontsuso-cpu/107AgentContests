@@ -1,0 +1,372 @@
+[
+  {
+    "title": "GitHub Student Developer Pack",
+    "url": "https://education.github.com/pack",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "会员", "开发工具", "GitHub", "AI"],
+    "cost": "免费（需学生认证）",
+    "how_to": "使用 @mail.ustc.edu.cn / @ustc.edu.cn 邮箱或学生证申请 GitHub Education，通过后领取 Student Pack（含 Copilot、域名、云额度等）。",
+    "summary": "全球大学生开发者礼包：GitHub Pro、Copilot、云服务额度、各类开发 SaaS 学生权益。"
+  },
+  {
+    "title": "JetBrains 学生教育授权（全家桶）",
+    "url": "https://www.jetbrains.com/community/education/#students",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "IDE", "开发工具", "JetBrains"],
+    "cost": "免费（需学生认证）",
+    "how_to": "官网申请学生授权。优先教育邮箱；受限时可走 GitHub Student Pack 或学信网在读证明人工审核。有效期通常一年，可续期。",
+    "summary": "IntelliJ IDEA、PyCharm、WebStorm、CLion 等 JetBrains 工具学生免费授权。"
+  },
+  {
+    "title": "Microsoft 365 教育版 / Azure for Students",
+    "url": "https://www.microsoft.com/zh-cn/education/products/office",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "Office", "Azure", "微软", "云"],
+    "cost": "免费或教育优惠（需学校邮箱）",
+    "how_to": "用科大邮箱登录 Microsoft 教育站点；Office 网页版/客户端与 Azure 学生订阅按微软当期政策领取。",
+    "summary": "Word/Excel/PowerPoint 等教育权益，以及 Azure 学生云额度（以官网实时政策为准）。"
+  },
+  {
+    "title": "Azure Dev Tools for Teaching",
+    "url": "https://azureforeducation.microsoft.com/devtools",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "微软", "开发工具", "Windows", "Visual Studio"],
+    "cost": "免费（学校授权范围内）",
+    "how_to": "通过学校微软教育订阅入口或 Azure 教育门户登录科大账号领取。",
+    "summary": "面向教学的微软专业开发工具包（含部分 Windows / Visual Studio 等，以学校开通范围为准）。"
+  },
+  {
+    "title": "Autodesk 教育社区（部分软件免费）",
+    "url": "https://www.autodesk.com/education/edu-software",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "设计", "CAD", "3D"],
+    "cost": "免费（需学生认证）",
+    "how_to": "用学校邮箱在 Autodesk Education 注册并验证学生身份后下载。",
+    "summary": "AutoCAD、Fusion、Maya 等设计软件教育授权，适合工科/设计向同学。"
+  },
+  {
+    "title": "Notion 教育优惠",
+    "url": "https://www.notion.so/product/notion-for-education",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["优惠", "笔记", "协作"],
+    "cost": "教育优惠（以官网为准）",
+    "how_to": "用教育邮箱申请 Notion Education Plan。",
+    "summary": "笔记与知识库工具的学生/教育计划，适合课程笔记与项目协作。"
+  },
+  {
+    "title": "Figma Education",
+    "url": "https://www.figma.com/education/",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "设计", "UI"],
+    "cost": "免费（需学生认证）",
+    "how_to": "官网申请 Education，用学校邮箱验证。",
+    "summary": "UI/UX 设计工具学生教育计划。"
+  },
+  {
+    "title": "Canva 教育版",
+    "url": "https://www.canva.com/education/",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "设计", "海报"],
+    "cost": "免费（需学生/教育认证）",
+    "how_to": "用教育邮箱申请 Canva for Education。",
+    "summary": "海报、演示、社媒图等视觉设计，学生教育权益。"
+  },
+  {
+    "title": "Overleaf 学术写作（机构/学生方案）",
+    "url": "https://www.overleaf.com/",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["LaTeX", "论文", "写作"],
+    "cost": "免费基础版；机构订阅可能额外开放功能",
+    "how_to": "注册账号写论文；关注图书馆或学院是否开通机构版。",
+    "summary": "在线 LaTeX 协作平台，研究生写论文常用。"
+  },
+  {
+    "title": "Zotero 文献管理（开源免费）",
+    "url": "https://www.zotero.org/",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["免费", "文献", "开源"],
+    "cost": "免费",
+    "how_to": "官网下载客户端；可配合浏览器插件抓取文献。",
+    "summary": "开源文献管理工具，替代部分商业文献管理软件。"
+  },
+  {
+    "title": "中国科大图书馆（电子资源 / 数据库）",
+    "url": "https://lib.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "图书馆资源",
+    "tags": ["免费", "数据库", "论文", "校内"],
+    "cost": "在校免费（校园网或统一认证）",
+    "how_to": "校园网直接访问；校外用图书馆提供的 VPN/校外访问指南登录电子资源。",
+    "summary": "知网、Web of Science、Elsevier 等电子数据库与图书借阅，科大学生核心学术资源入口。"
+  },
+  {
+    "title": "图书馆校外访问电子资源指南",
+    "url": "https://lib.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "图书馆资源",
+    "tags": ["校外访问", "VPN", "数据库"],
+    "cost": "免费（在校身份）",
+    "how_to": "打开图书馆网站最新「校外访问电子数据库资源指南」公告，按指南配置。",
+    "summary": "不在校园网时如何合法访问图书馆付费数据库。"
+  },
+  {
+    "title": "Elsevier OA 发文 APC 全额资助（学校开通时）",
+    "url": "https://lib.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "会议/学术交流",
+    "tags": ["OA", "发文", "资助", "研究生"],
+    "cost": "符合条件可全额资助",
+    "how_to": "关注图书馆关于 Elsevier APC 资助的通知与操作指南，通讯作者等条件以官方最新公告为准。",
+    "summary": "学校与出版社协议下的开放获取发文资助，可显著降低 OA 费用。"
+  },
+  {
+    "title": "学工在线（奖助学金 / 办事指南）",
+    "url": "https://stuhome.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["奖助学金", "办事", "资助", "学工"],
+    "cost": "免费查询与办理指引",
+    "how_to": "访问学工在线：奖助学金、助学贷款、勤工助学、办事指南、文档中心。",
+    "summary": "本科生学工事务总入口：资助、奖学金、办事流程与文档下载。"
+  },
+  {
+    "title": "本科生教务处",
+    "url": "https://www.teach.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["选课", "教务", "本科"],
+    "cost": "免费",
+    "how_to": "查选课、成绩、常见事务办理时间与通知。",
+    "summary": "本科生选课、教学通知与教务事务办理入口。"
+  },
+  {
+    "title": "研究生院",
+    "url": "https://gradschool.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["研究生", "学籍", "学位", "奖助"],
+    "cost": "免费",
+    "how_to": "查看学籍奖助、学位授予、培养相关通知与表格下载。",
+    "summary": "研究生学籍、奖助、学位与培养管理入口。"
+  },
+  {
+    "title": "就业指导中心",
+    "url": "https://www.job.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "就业实习",
+    "tags": ["就业", "实习", "招聘", "双选会"],
+    "cost": "免费",
+    "how_to": "浏览校园招聘、实习、双选会、空中宣讲与政策规章。",
+    "summary": "校招、实习、基层就业、科研助理等岗位与招聘活动信息。"
+  },
+  {
+    "title": "迎新网 / 新生资源",
+    "url": "https://welcome.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["新生", "报到", "助学"],
+    "cost": "免费",
+    "how_to": "新生按迎新系统完成报到；可查看帮困助学等介绍。",
+    "summary": "新生报到、校园生活与帮困助学相关入口。"
+  },
+  {
+    "title": "校园网 / 信息化服务（学生）",
+    "url": "https://ustcnet.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["网络", "VPN", "邮箱", "一卡通"],
+    "cost": "基础服务免费/按学校计费政策",
+    "how_to": "注册校园网、Wi‑Fi、VPN、邮箱与一卡通相关服务。",
+    "summary": "有线/无线网络、校外 VPN、邮件、一卡通等信息化基础服务。"
+  },
+  {
+    "title": "统一身份认证 / 智慧门户",
+    "url": "https://passport.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["登录", "门户", "统一认证"],
+    "cost": "免费",
+    "how_to": "用学号/工号登录后进入各类校内系统。",
+    "summary": "访问教务、学工、图书馆等系统的统一登录入口。"
+  },
+  {
+    "title": "瀚海星云 BBS",
+    "url": "https://bbs.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["论坛", "二手", "经验", "校园"],
+    "cost": "免费",
+    "how_to": "校内账号登录，浏览学习、资源、交易等版块。",
+    "summary": "科大校园论坛，常见课程经验、资源分享与校园信息。"
+  },
+  {
+    "title": "学术会议参与 / 差旅资助（院系+学校政策）",
+    "url": "https://gradschool.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "会议/学术交流",
+    "tags": ["会议", "资助", "差旅", "研究生", "本科科研"],
+    "cost": "符合条件可报销注册费/差旅（以院系与项目规定为准）",
+    "how_to": "1) 关注研究生院、院系研工/教务通知；2) 询问导师课题组经费与学校会议资助；3) 英才班等专项计划可能有单独交流资助。申请前核对最新管理办法。",
+    "summary": "参加国内外学术会议的资助通常来自导师课题、院系专项或学校人才培养计划，需按流程提前申请。"
+  },
+  {
+    "title": "学生证与火车票优惠",
+    "url": "https://stuhome.ustc.edu.cn/2311/list.htm",
+    "source": "精选资源目录",
+    "category": "办事指南",
+    "tags": ["学生证", "火车票", "优惠"],
+    "cost": "按规定优惠",
+    "how_to": "查看学工在线「学生证（含购买优惠火车票）相关问题答疑」并按流程办理。",
+    "summary": "学生证办理/补办及优惠火车票相关答疑入口。"
+  },
+  {
+    "title": "国家大学生创新创业训练计划 / 科创竞赛入口提示",
+    "url": "https://www.teach.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "竞赛/科创",
+    "tags": ["大创", "竞赛", "科创", "本科"],
+    "cost": "项目资助以当年通知为准",
+    "how_to": "关注教务处、团委、院系关于大创、挑战杯、数学建模等报名与立项通知。",
+    "summary": "本科生科创项目与高水平竞赛的校内通知通常由教务/团委/学院发布。"
+  },
+  {
+    "title": "ISIC 国际学生证（可选）",
+    "url": "https://www.isic.org/",
+    "source": "精选资源目录",
+    "category": "免费软件/会员",
+    "tags": ["学生证", "优惠", "国际"],
+    "cost": "办证有费用；可解锁部分商家/软件学生价",
+    "how_to": "在官方或授权渠道办理后，可用于部分国际学生优惠与软件验证。",
+    "summary": "国际学生身份证明，部分软件/出行/场馆有额外优惠。"
+  },
+  {
+    "title": "学信网学籍在线验证报告",
+    "url": "https://www.chsi.com.cn/",
+    "source": "精选资源目录",
+    "category": "办事指南",
+    "tags": ["学籍", "证明", "认证"],
+    "cost": "按学信网收费政策",
+    "how_to": "登录学信网申请《教育部学籍在线验证报告》，用于 JetBrains 等人工学生认证。",
+    "summary": "申请各类学生优惠时常用的官方在读证明材料。"
+  },
+  {
+    "title": "中国科大邮箱（教育邮箱）",
+    "url": "https://mail.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["邮箱", "教育优惠", "认证"],
+    "cost": "免费",
+    "how_to": "开通学校邮箱后用于各类教育优惠验证。",
+    "summary": "领取绝大多数教育优惠的关键凭证，请优先开通并保管好。"
+  },
+  {
+    "title": "中国科大新闻网（人才培养）",
+    "url": "https://news.ustc.edu.cn/rcpy.htm",
+    "source": "精选资源目录",
+    "category": "网站入口",
+    "tags": ["活动", "培养", "新闻"],
+    "cost": "免费浏览",
+    "how_to": "浏览暑期学校、英才班实训、研学实践等学生活动报道与线索。",
+    "summary": "从新闻线索发现暑期学校、实训营、交流项目等学生机会。"
+  },
+  {
+    "title": "青春科大 · 智慧团学 / 第二课堂（需登录）",
+    "url": "https://young.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "二课/团学活动",
+    "tags": ["第二课堂", "二课", "青春科大", "活动报名", "需登录"],
+    "cost": "免费（需统一身份认证）",
+    "how_to": "校外访问会跳转统一认证。用学号登录后查看/报名二课活动、查第二课堂成绩单。活动本体在登录墙内，公开爬虫无法无账号抓取全部活动列表。",
+    "summary": "科大二课与团学活动主平台：活动发布、报名、签到、成绩单。需登录，不能公开全量爬取。"
+  },
+  {
+    "title": "教务处 · 境外交流专栏",
+    "url": "https://www.teach.ustc.edu.cn/category/exchange/xchg-oversea",
+    "source": "精选资源目录",
+    "category": "留学/出境交流",
+    "tags": ["留学", "出境", "交换", "本科"],
+    "cost": "免费浏览通知；项目资助按当年政策",
+    "how_to": "查看境外交流通知；立项/报备通常走综合教务或境外交流管理系统，并配合国合部出境审批。",
+    "summary": "本科生境外科研实践、学期交换、暑期项目等教务侧公开通知入口。"
+  },
+  {
+    "title": "本科生境外交流管理系统",
+    "url": "https://jwjl.cmet.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "留学/出境交流",
+    "tags": ["留学", "出境", "系统", "需登录"],
+    "cost": "免费（需登录）",
+    "how_to": "本科生登录后申报院级/个人境外项目、行程报备与资助相关流程（以系统与当年通知为准）。",
+    "summary": "本科出境交流申报与管理平台，登录后可见项目列表。"
+  },
+  {
+    "title": "国际学院（留学/国际交流公开信息）",
+    "url": "https://ic.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "留学/国际交流",
+    "tags": ["留学", "国际学生", "交流", "奖学金"],
+    "cost": "免费浏览公开页",
+    "how_to": "查看新闻速递、通知公告、全球化学习/出境交流入口、奖学金与学生活动信息。",
+    "summary": "国际学院官网：国际学生与部分交流/活动/奖学金公开信息。"
+  },
+  {
+    "title": "国家留学基金委（CSC）公开项目",
+    "url": "https://www.csc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "留学/出境交流",
+    "tags": ["CSC", "公派", "留学"],
+    "cost": "项目资助以 CSC/学校通知为准",
+    "how_to": "关注 CSC 选派项目；校内通常还有教务处/研究生院/国合部配套通知。",
+    "summary": "国家公派留学官方信息源，需结合学校同期通知申请。"
+  },
+  {
+    "title": "教务处 · 交流类通知列表",
+    "url": "https://www.teach.ustc.edu.cn/notice/notice-exchange/",
+    "source": "精选资源目录",
+    "category": "留学/出境交流",
+    "tags": ["出境", "交流", "通知"],
+    "cost": "免费",
+    "how_to": "定期打开查看最新境外/交流管理通知。",
+    "summary": "教务处交流类通知聚合页。"
+  },
+  {
+    "title": "国合部出境审批咨询邮箱（公开联系方式）",
+    "url": "mailto:outgoing@ustc.edu.cn",
+    "source": "精选资源目录",
+    "category": "留学/出境交流",
+    "tags": ["出境", "审批", "咨询"],
+    "cost": "免费咨询",
+    "how_to": "出境审批及资助等级等问题可按教务通知中的联系方式咨询国合部（如 outgoing@ustc.edu.cn）。",
+    "summary": "本科出境审批常见联系邮箱（以最新官方通知为准）。"
+  },
+  {
+    "title": "图书馆讲座/活动与数据库动态",
+    "url": "https://lib.ustc.edu.cn/",
+    "source": "精选资源目录",
+    "category": "校园活动",
+    "tags": ["讲座", "培训", "数据库", "信息素养"],
+    "cost": "多数免费",
+    "how_to": "关注图书馆最新动态、讲座培训、资源试用/正式开通公告。",
+    "summary": "学术讲座、信息素养培训、电子资源开通与校外访问指南。"
+  },
+  {
+    "title": "主站一周会议/文化活动通知（服务类）",
+    "url": "https://www.ustc.edu.cn/tzgg.htm",
+    "source": "精选资源目录",
+    "category": "校园活动",
+    "tags": ["活动", "会议", "通知"],
+    "cost": "免费浏览",
+    "how_to": "浏览校级通知公告，常有讲座、展演、会议安排；部分活动会注明可在青春科大报名计二课。",
+    "summary": "校级公开通知，常含活动、讲座与办事类信息。"
+  }
+]
