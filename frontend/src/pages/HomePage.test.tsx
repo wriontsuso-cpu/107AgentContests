@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { RESOURCE_CATEGORIES } from '@/domain/categories'
-import { resources } from '@/data/resources'
 import HomePage from './HomePage'
 
 function LocationProbe() {
@@ -28,7 +27,7 @@ describe('HomePage', () => {
     renderHome()
 
     expect(screen.getByRole('heading', { name: /从一个需要，\s*抵达一处资源。/ })).toBeInTheDocument()
-    expect(screen.getByText(`已整理 ${resources.length.toLocaleString('zh-CN')} 条校园资源`)).toBeInTheDocument()
+    expect(screen.getByText('已整理 1,295 条校园资源')).toBeInTheDocument()
     expect(screen.getByRole('searchbox', { name: '搜索校园资源' })).toBeInTheDocument()
 
     for (const category of RESOURCE_CATEGORIES) {

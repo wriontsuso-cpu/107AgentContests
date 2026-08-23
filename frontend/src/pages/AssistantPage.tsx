@@ -25,6 +25,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
   const [lastMessage, setLastMessage] = useState('')
+  const [sessionId, setSessionId] = useState<string>()
   const clues = useMemo(
     () => [...new Set(messages.flatMap((message) => message.response?.clues ?? []))],
     [messages],
@@ -39,7 +40,8 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     setError(undefined)
 
     try {
-      const response = await client({ message, history })
+      const response = await client({ message, history, sessionId })
+      if (response.sessionId) setSessionId(response.sessionId)
       setMessages((current) => [...current, {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -57,6 +59,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     setMessages([openingMessage])
     setError(undefined)
     setLastMessage('')
+    setSessionId(undefined)
   }
 
   return (

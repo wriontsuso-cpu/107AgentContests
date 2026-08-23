@@ -1,28 +1,45 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageTransition from '@/components/PageTransition'
 import ResourceFilters from '@/components/resources/ResourceFilters'
 import ResourceResults from '@/components/resources/ResourceResults'
 import { resources } from '@/data/resources'
 import type { ResourceCategoryId } from '@/domain/categories'
-import { paginateResources, parseResourceFilters, searchResources } from '@/lib/resourceSearch'
+import { parseResourceFilters } from '@/lib/resourceSearch'
+import { listResources, type ResourceListResponse } from '@/services/resourceClient'
 
 export default function ResourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = parseResourceFilters(searchParams)
-  const filtered = useMemo(
-    () => searchResources(resources, { query: filters.query, category: filters.category }),
-    [filters.query, filters.category],
-  )
-  const pageData = paginateResources(filtered, filters.page, 12)
+  const [pageData, setPageData] = useState<ResourceListResponse>()
+  const [error, setError] = useState<string>()
+  const [attempt, setAttempt] = useState(0)
+  const availableTags = useMemo(() => [...new Set(resources
+    .filter((resource) => !filters.category || resource.category === filters.category)
+    .filter((resource) => !filters.legacyCategory || resource.legacyCategory === filters.legacyCategory)
+    .flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN')).slice(0, 80), [filters.category, filters.legacyCategory])
 
-  function updateParams(next: { query?: string; category?: ResourceCategoryId; page?: number }) {
+  useEffect(() => {
+    let active = true
+    setPageData(undefined)
+    setError(undefined)
+    listResources({ query: filters.query, category: filters.category, legacyCategory: filters.legacyCategory, tag: filters.tag, page: filters.page, pageSize: 12 })
+      .then((result) => { if (active) setPageData(result) })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : '资源目录暂时不可用，请稍后重试。') })
+    return () => { active = false }
+  }, [filters.query, filters.category, filters.legacyCategory, filters.tag, filters.page, attempt])
+
+  function updateParams(next: { query?: string; category?: ResourceCategoryId; legacyCategory?: string; tag?: string; page?: number }) {
     const params = new URLSearchParams()
     const query = next.query ?? filters.query
     const category = next.category === undefined && 'category' in next ? undefined : next.category ?? filters.category
     const page = next.page ?? 1
+    const legacyCategory = next.legacyCategory === undefined && 'legacyCategory' in next ? undefined : next.legacyCategory ?? filters.legacyCategory
+    const tag = next.tag === undefined && 'tag' in next ? undefined : next.tag ?? filters.tag
     if (query) params.set('q', query)
     if (category) params.set('category', category)
+    if (legacyCategory) params.set('group', legacyCategory)
+    if (tag) params.set('tag', tag)
     if (page > 1) params.set('page', String(page))
     setSearchParams(params)
   }
@@ -44,19 +61,26 @@ export default function ResourcesPage() {
         <ResourceFilters
           query={filters.query}
           category={filters.category}
+          group={filters.legacyCategory}
+          tag={filters.tag}
+          tags={availableTags}
           onSearch={(query) => updateParams({ query })}
-          onCategoryChange={(category) => updateParams({ category })}
+          onCategoryChange={(category) => updateParams({ category, legacyCategory: undefined, tag: undefined })}
+          onGroupChange={(legacyCategory) => updateParams({ legacyCategory, tag: undefined })}
+          onTagChange={(tag) => updateParams({ tag })}
           onClear={clearFilters}
         />
         <div className="resource-results">
-          <ResourceResults
+          {!pageData && !error && <div className="resource-loading" role="status">正在整理校园资源…</div>}
+          {error && <div className="resource-empty" role="alert"><h2>资源目录加载失败</h2><p>{error}</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>重新加载</button></div>}
+          {pageData && <ResourceResults
             resources={pageData.items}
             total={pageData.total}
             page={pageData.page}
             totalPages={pageData.totalPages}
             onPageChange={(page) => updateParams({ page })}
             onClear={clearFilters}
-          />
+          />}
         </div>
       </section>
     </PageTransition>

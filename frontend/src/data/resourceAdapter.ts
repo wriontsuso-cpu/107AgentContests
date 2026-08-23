@@ -49,9 +49,9 @@ export function adaptResource(input: unknown): Resource | null {
   const row = input as UnknownRecord
   const title = asString(row.title)
   const url = safeUrl(row.url)
-  if (!title || !url) return null
+  if (!title) return null
 
-  const legacyCategory = asString(row.legacy_category) || asString(row.category) || asString(row.category_name)
+  const legacyCategory = (asString(row.legacy_category) || asString(row.category) || asString(row.category_name)).replaceAll('/', '-')
   const category = resolveCategory(
     legacyCategory,
     asString(row.category_id),
@@ -64,9 +64,9 @@ export function adaptResource(input: unknown): Resource | null {
   const explicitId = asString(row.id)
 
   return {
-    id: explicitId || `resource-${stableHash(`${url}|${title}`)}`,
+    id: explicitId || `resource-${stableHash(`${url ?? asString(row.url)}|${title}`)}`,
     title,
-    url,
+    ...(url ? { url } : {}),
     category,
     legacyCategory,
     summary,

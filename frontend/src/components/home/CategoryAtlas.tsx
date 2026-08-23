@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import { resourceCounts } from '@/data/resources'
 import { RESOURCE_CATEGORIES } from '@/domain/categories'
 
 const icons: Record<string, LucideIcon> = {
@@ -55,7 +54,7 @@ export default function CategoryAtlas() {
                 <p>{category.description}</p>
               </div>
               <div className="category-tile__footer">
-                <span>{resourceCounts[category.id]} 项资源</span>
+                <span>探索这个方向</span>
                 <ArrowUpRight size={19} aria-hidden="true" />
               </div>
             </Link>

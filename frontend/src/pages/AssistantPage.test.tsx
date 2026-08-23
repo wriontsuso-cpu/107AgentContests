@@ -31,10 +31,11 @@ describe('AssistantPage', () => {
     expect(screen.getByText('正在梳理你的需求…')).toBeInTheDocument()
 
     resolveResponse({
+      status: 'results',
       reply: '你更偏向竞赛还是科研体验？',
       clarifications: ['参加竞赛', '加入科研项目'],
       clues: ['课外项目'],
-      resources: [{ id: 'demo', title: '大学生研究计划', summary: '本科生科研实践', category: '科研与创新', url: '/resources/demo' }],
+      resources: [{ id: 'demo', title: '大学生研究计划', summary: '本科生科研实践', category: '科研与创新', path: '/resources/demo' }],
     })
 
     expect(await screen.findByText('你更偏向竞赛还是科研体验？')).toBeInTheDocument()

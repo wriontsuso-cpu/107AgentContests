@@ -23,9 +23,11 @@ export default function ResourceCard({ resource }: { resource: Resource }) {
       <div className="resource-card__footer">
         <span>{resource.source.label}</span>
         <div>
-          <a href={resource.url} target="_blank" rel="noreferrer">
-            原页面 <ExternalLink size={14} aria-hidden="true" />
-          </a>
+          {resource.url && (
+            <a href={resource.url} target="_blank" rel="noopener noreferrer">
+              原页面 <ExternalLink size={14} aria-hidden="true" />
+            </a>
+          )}
           <Link to={`/resources/${resource.id}`} aria-label={`查看详情 · ${resource.title}`}>
             查看详情 <ArrowRight size={15} aria-hidden="true" />
           </Link>

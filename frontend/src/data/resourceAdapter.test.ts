@@ -29,11 +29,16 @@ describe('adaptResource', () => {
     ['办事指南', 'services'],
     ['教务通知', 'learning'],
     ['学术科研', 'research'],
-    ['竞赛/科创', 'competition'],
+    ['竞赛-科创', 'competition'],
     ['校园活动', 'community'],
     ['新生指南', 'life'],
     ['校医院', 'wellbeing'],
-    ['留学/国际交流', 'future'],
+    ['留学-国际交流', 'future'],
+    ['资源导航', 'services'],
+    ['学工通知', 'services'],
+    ['免费软件-会员', 'learning'],
+    ['研究生培养', 'future'],
+    ['本科招生', 'future'],
   ])('maps legacy category %s into %s', (legacyCategory, expectedCategory) => {
     const resource = adaptResource({
       title: `${legacyCategory}示例`,
@@ -61,10 +66,18 @@ describe('adaptResource', () => {
     })
   })
 
-  it('drops malformed rows and unsafe destinations', () => {
+  it('drops rows without a title but preserves resources with unsafe destinations', () => {
     expect(adaptResource({ category: '办事指南' })).toBeNull()
-    expect(adaptResource({ title: '危险链接', url: 'javascript:alert(1)' })).toBeNull()
-    expect(adaptResource({ title: '本地文件', url: 'file:///C:/secret.txt' })).toBeNull()
+    expect(adaptResource({ title: '危险链接', url: 'javascript:alert(1)' })?.url).toBeUndefined()
+    expect(adaptResource({ title: '本地文件', url: 'file:///C:/secret.txt' })?.url).toBeUndefined()
+  })
+
+  it('puts an unknown source category into other resources', () => {
+    expect(adaptResource({
+      title: '未来新增入口',
+      url: 'https://www.ustc.edu.cn/new',
+      category: '尚未识别的栏目',
+    })?.category).toBe('other')
   })
 })
 

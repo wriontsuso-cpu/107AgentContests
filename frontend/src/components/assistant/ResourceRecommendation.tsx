@@ -4,7 +4,7 @@ import type { AssistantResource } from '@/services/assistantClient'
 
 export default function ResourceRecommendation({ resource }: { resource: AssistantResource }) {
   return (
-    <Link className="assistant-resource" to={resource.url}>
+    <Link className="assistant-resource" to={resource.path}>
       <span>{resource.category}</span>
       <strong>{resource.title}</strong>
       <p>{resource.summary}</p>

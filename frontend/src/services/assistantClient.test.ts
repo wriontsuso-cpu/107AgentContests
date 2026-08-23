@@ -20,17 +20,35 @@ describe('requestAssistant', () => {
   })
 
   it('passes the agreed request contract to a configured endpoint', async () => {
+    const known = (await import('@/data/resources')).resources.find((resource) => resource.url)!
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ reply: '找到一项资源', clarifications: [], resources: [], clues: ['学习与学术'] }),
+      json: async () => ({ answer: '找到一项资源', results: [{ title: known.title, url: known.url, category: known.legacyCategory, summary: known.summary }], session_id: 's-1' }),
     })
     const request = { message: '图书馆预约', history: [{ role: 'user' as const, content: '你好' }] }
 
     await requestAssistant(request, { apiBaseUrl: 'https://api.example.test/', fetcher: fetcher as typeof fetch })
 
-    expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/assistant/chat', expect.objectContaining({
+    expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/search', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify(request),
+      body: JSON.stringify({ query: request.message, top_k: 5, category: null, session_id: undefined }),
     }))
+    const response = await requestAssistant(request, { apiBaseUrl: 'https://api.example.test/', fetcher: fetcher as typeof fetch })
+    expect(response.resources[0].path).toBe(`/resources/${known.id}`)
+    expect(response.sessionId).toBe('s-1')
+  })
+
+  it('never exposes a model supplied unknown URL as a clickable recommendation', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ answer: '试试这个', results: [{ title: '伪造入口', url: 'https://evil.example/phish', category: '图书馆' }] }),
+    })
+
+    const response = await requestAssistant(
+      { message: '找资源', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )
+
+    expect(response.resources).toEqual([])
   })
 })

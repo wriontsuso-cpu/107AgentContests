@@ -1,9 +1,6 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/noto-sans-sc';
-@import '@fontsource-variable/noto-serif-sc';
-
 :root {
-  font-family: 'Noto Sans SC Variable', system-ui, sans-serif;
+  font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #10213d;
   background: #f5f6f2;
   font-synthesis: none;
@@ -16,8 +13,16 @@
   --ustc-blue: #0756a0;
   --deep-blue: #061c41;
   --cyan: #40c8d0;
-  --serif: 'Noto Serif SC Variable', 'Songti SC', serif;
+  --serif: 'Songti SC', SimSun, serif;
   --shadow-soft: 0 24px 70px rgba(6, 28, 65, 0.12);
+}
+
+.route-loading,
+.resource-loading {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
 }
 
 * {
@@ -891,11 +896,20 @@ textarea {
   }
 
   .atlas__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .category-tile {
-    min-height: 265px;
+    min-height: 230px;
+    padding: 22px 18px;
+  }
+
+  .category-tile h3 {
+    font-size: 20px;
+  }
+
+  .category-tile p {
+    font-size: 12px;
   }
 
   .featured {
@@ -1477,6 +1491,26 @@ textarea {
   box-shadow: 0 12px 38px rgba(6, 28, 65, 0.06);
 }
 
+.resource-tag-filter {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: -34px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-tag-filter select {
+  min-width: 160px;
+  padding: 9px 34px 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  background: white;
+}
+
 .resource-search svg {
   color: var(--muted);
 }
@@ -1575,6 +1609,31 @@ textarea {
 
 .category-tree__item--active {
   box-shadow: 0 6px 24px rgba(6, 28, 65, 0.06);
+}
+
+.category-tree__children {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0 8px 22px;
+  padding-left: 13px;
+  border-left: 1px solid var(--line);
+}
+
+.category-tree__child {
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.category-tree__child:hover,
+.category-tree__child--active {
+  color: var(--ustc-blue);
+  background: rgba(7, 86, 160, 0.07);
 }
 
 .mobile-filter-button {
@@ -1764,6 +1823,11 @@ textarea {
     grid-template-columns: 1fr;
     gap: 20px;
     padding-block: 38px 80px;
+  }
+
+  .resource-tag-filter {
+    justify-content: space-between;
+    margin-top: 0;
   }
 
   .mobile-filter-button {

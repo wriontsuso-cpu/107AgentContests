@@ -12,8 +12,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@fontsource-variable/noto-sans-sc": "^5.2.8",
-    "@fontsource-variable/noto-serif-sc": "^5.2.8",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

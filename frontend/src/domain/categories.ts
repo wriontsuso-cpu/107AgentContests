@@ -7,6 +7,7 @@ export const CATEGORY_IDS = [
   'life',
   'wellbeing',
   'future',
+  'other',
 ] as const
 
 export type ResourceCategoryId = (typeof CATEGORY_IDS)[number]
@@ -33,7 +34,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我需要办理一件校园事务',
     icon: 'landmark',
     accent: '#4d75d7',
-    legacyCategories: ['办事指南', '财务服务', '保卫服务', '网站入口', '校级通知', '公示公告'],
+    legacyCategories: ['办事指南', '财务服务', '保卫服务', '网站入口', '校级通知', '公示公告', '资源导航', '学工通知', '教务服务'],
   },
   {
     id: 'learning',
@@ -44,7 +45,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想找到课程或学习支持',
     icon: 'book-open',
     accent: '#1a8a91',
-    legacyCategories: ['教务服务', '教务通知', '教务选课', '图书馆', '图书馆资源', '研究生培养'],
+    legacyCategories: ['教务通知', '教务选课', '图书馆', '图书馆资源', '免费软件-会员'],
   },
   {
     id: 'research',
@@ -55,7 +56,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想开展科研或寻找创新资源',
     icon: 'atom',
     accent: '#735bc1',
-    legacyCategories: ['学术科研', '会议/学术交流', '超算中心'],
+    legacyCategories: ['学术科研', '会议-学术交流', '超算中心'],
   },
   {
     id: 'competition',
@@ -66,7 +67,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想参加竞赛或实践项目',
     icon: 'trophy',
     accent: '#d1842d',
-    legacyCategories: ['竞赛/科创', '勤工助学'],
+    legacyCategories: ['竞赛-科创', '勤工助学'],
   },
   {
     id: 'community',
@@ -77,7 +78,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想认识同好或参加活动',
     icon: 'users-round',
     accent: '#d25763',
-    legacyCategories: ['校园活动', '二课/团学活动', '青春科大', '媒体关注'],
+    legacyCategories: ['校园活动', '二课-团学活动', '青春科大', '媒体关注'],
   },
   {
     id: 'life',
@@ -88,7 +89,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我遇到了校园生活问题',
     icon: 'coffee',
     accent: '#3b9b68',
-    legacyCategories: ['新生指南', '迎新资讯', '资源导航', '免费软件/会员', '本科招生', '新生事务'],
+    legacyCategories: ['新生指南', '迎新资讯', '新生事务'],
   },
   {
     id: 'wellbeing',
@@ -99,7 +100,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我需要健康、资助或权益支持',
     icon: 'heart-pulse',
     accent: '#c95386',
-    legacyCategories: ['校医院', '奖助学金', '学工通知'],
+    legacyCategories: ['校医院', '奖助学金'],
   },
   {
     id: 'future',
@@ -110,7 +111,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我正在规划升学、就业或交流',
     icon: 'route',
     accent: '#3576a8',
-    legacyCategories: ['就业实习', '留学/出境交流', '留学/国际交流'],
+    legacyCategories: ['就业实习', '研究生培养', '本科招生', '留学-出境交流', '留学-国际交流'],
   },
 ] as const
 
@@ -143,9 +144,19 @@ export function resolveCategory(
   )
   if (byName) return byName.id
 
-  return legacyCategoryMap.get(legacyCategory ?? '') ?? 'life'
+  return legacyCategoryMap.get(legacyCategory ?? '') ?? 'other'
 }
 
 export function getCategory(id: ResourceCategoryId): ResourceCategory {
-  return RESOURCE_CATEGORIES.find((category) => category.id === id)!
+  return RESOURCE_CATEGORIES.find((category) => category.id === id) ?? {
+    id: 'other',
+    index: '09',
+    label: '其他资源',
+    shortLabel: '其他资源',
+    description: '尚待归类的新资源入口。',
+    prompt: '我想查找其他校园资源',
+    icon: 'compass',
+    accent: '#6f7785',
+    legacyCategories: [],
+  }
 }

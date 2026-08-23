@@ -6,12 +6,17 @@ import CategoryTree from './CategoryTree'
 interface ResourceFiltersProps {
   query: string
   category?: ResourceCategoryId
+  group?: string
+  tag?: string
+  tags: string[]
   onSearch: (query: string) => void
   onCategoryChange: (category?: ResourceCategoryId) => void
+  onGroupChange: (group?: string) => void
+  onTagChange: (tag?: string) => void
   onClear: () => void
 }
 
-export default function ResourceFilters({ query, category, onSearch, onCategoryChange, onClear }: ResourceFiltersProps) {
+export default function ResourceFilters({ query, category, group, tag, tags, onSearch, onCategoryChange, onGroupChange, onTagChange, onClear }: ResourceFiltersProps) {
   const [draft, setDraft] = useState(query)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -35,6 +40,13 @@ export default function ResourceFilters({ query, category, onSearch, onCategoryC
         />
         <button type="submit">搜索</button>
       </form>
+      <div className="resource-tag-filter">
+        <label htmlFor="resource-tag">标签</label>
+        <select id="resource-tag" value={tag ?? ''} onChange={(event) => onTagChange(event.target.value || undefined)}>
+          <option value="">全部标签</option>
+          {tags.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </div>
       <button
         className="mobile-filter-button"
         type="button"
@@ -48,9 +60,11 @@ export default function ResourceFilters({ query, category, onSearch, onCategoryC
       <aside className={`resource-sidebar${drawerOpen ? ' resource-sidebar--open' : ''}`} aria-label="资源分类">
         <div className="resource-sidebar__heading">
           <span>按分类浏览</span>
-          {(query || category) && <button type="button" onClick={() => { setDraft(''); onClear() }}>清除筛选</button>}
+          {(query || category || group || tag) && <button type="button" onClick={() => { setDraft(''); onClear() }}>清除筛选</button>}
         </div>
-        <CategoryTree selected={category} onSelect={(value) => { onCategoryChange(value); setDrawerOpen(false) }} />
+        <CategoryTree selected={category} selectedGroup={group}
+          onSelect={(value) => { onCategoryChange(value); if (!value) setDrawerOpen(false) }}
+          onSelectGroup={(value) => { onGroupChange(value); setDrawerOpen(false) }} />
       </aside>
     </>
   )

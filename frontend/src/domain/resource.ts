@@ -9,7 +9,7 @@ export interface ResourceSource {
 export interface Resource {
   id: string
   title: string
-  url: string
+  url?: string
   category: ResourceCategoryId
   legacyCategory: string
   summary: string

@@ -32,6 +32,16 @@ describe('searchResources', () => {
     expect(fixtures).toEqual(copy)
   })
 
+  it('filters by source subcategory and tag together', () => {
+    const result = searchResources(fixtures, {
+      category: 'learning',
+      legacyCategory: '图书馆',
+      tag: '图书馆',
+    })
+
+    expect(result.map((resource) => resource.id)).toEqual(['1'])
+  })
+
   it('returns a stable useful order for blank queries', () => {
     const result = searchResources(fixtures, {})
     expect(result.map((resource) => resource.id)).toEqual(fixtures.map((resource) => resource.id))
@@ -46,9 +56,11 @@ describe('pagination and URL filters', () => {
   })
 
   it('accepts only known categories and positive pages', () => {
-    expect(parseResourceFilters(new URLSearchParams('q=%E5%9B%BE%E4%B9%A6%E9%A6%86&category=learning&page=2'))).toEqual({
+    expect(parseResourceFilters(new URLSearchParams('q=%E5%9B%BE%E4%B9%A6%E9%A6%86&category=learning&group=%E5%9B%BE%E4%B9%A6%E9%A6%86&tag=%E9%A2%84%E7%BA%A6&page=2'))).toEqual({
       query: '图书馆',
       category: 'learning',
+      legacyCategory: '图书馆',
+      tag: '预约',
       page: 2,
     })
     expect(parseResourceFilters(new URLSearchParams('category=unknown&page=-7'))).toEqual({ query: '', page: 1 })

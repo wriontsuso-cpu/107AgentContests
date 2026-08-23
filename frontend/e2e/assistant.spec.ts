@@ -7,4 +7,8 @@ test('guided assistant turns a starter need into recommendations', async ({ page
   await expect(page.getByText(/竞赛与实践/).first()).toBeVisible()
   await expect(page.locator('.assistant-resource').first()).toBeVisible()
   await expect(page.getByText('需求较宽泛')).toBeVisible()
+  await page.getByRole('button', { name: '最近就能参加' }).click()
+  await page.locator('.assistant-resource').first().click()
+  await expect(page).toHaveURL(/\/resources\//)
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 })

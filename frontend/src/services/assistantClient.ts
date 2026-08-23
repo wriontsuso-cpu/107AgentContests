@@ -10,6 +10,8 @@ export interface AssistantHistoryMessage {
 export interface AssistantRequest {
   message: string
   history: AssistantHistoryMessage[]
+  category?: string
+  sessionId?: string
 }
 
 export interface AssistantResource {
@@ -17,14 +19,16 @@ export interface AssistantResource {
   title: string
   summary: string
   category: string
-  url: string
+  path: string
 }
 
 export interface AssistantResponse {
+  status: 'clarify' | 'results' | 'no_answer'
   reply: string
   clarifications: string[]
   resources: AssistantResource[]
   clues: string[]
+  sessionId?: string
 }
 
 export type AssistantClient = (request: AssistantRequest) => Promise<AssistantResponse>
@@ -32,6 +36,7 @@ export type AssistantClient = (request: AssistantRequest) => Promise<AssistantRe
 interface ClientOptions {
   apiBaseUrl?: string
   fetcher?: typeof fetch
+  useMocks?: boolean
 }
 
 function inferCategory(message: string): ResourceCategoryId | undefined {
@@ -54,7 +59,7 @@ function toAssistantResource(resource: (typeof resources)[number]): AssistantRes
     title: resource.title,
     summary: resource.summary,
     category: getCategory(resource.category).label,
-    url: `/resources/${resource.id}`,
+    path: `/resources/${resource.id}`,
   }
 }
 
@@ -67,6 +72,7 @@ function localDemo(request: AssistantRequest): AssistantResponse {
 
   if (!categoryInfo) {
     return {
+      status: 'clarify',
       reply: '我先帮你把范围缩小一点。你现在更接近学习、校园生活，还是想寻找课外机会？',
       clarifications: ['学习与课程支持', '校园生活与办事', '竞赛、科研或活动'],
       resources: [],
@@ -76,6 +82,7 @@ function localDemo(request: AssistantRequest): AssistantResponse {
 
   const isBroad = request.message.length < 12 || /想|项目|机会|帮我/.test(request.message)
   return {
+    status: recommendations.length > 0 ? 'results' : 'no_answer',
     reply: isBroad
       ? `听起来你正在寻找“${categoryInfo.label}”方向的机会。为了推荐得更准，你可以继续告诉我偏好的时间、参与形式或目前阶段。`
       : `我按“${categoryInfo.label}”为你筛了一组更接近的校园入口，先从下面这些资源开始确认。`,
@@ -85,20 +92,64 @@ function localDemo(request: AssistantRequest): AssistantResponse {
   }
 }
 
+type RemoteResult = Record<string, unknown>
+
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeUrl(value: string): string {
+  return value.replace(/^http:/, 'https:').replace(/\/$/, '').toLowerCase()
+}
+
+function mapVerifiedResult(value: unknown): AssistantResource | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const row = value as RemoteResult
+  const candidateUrl = asText(row.url)
+  const candidateTitle = asText(row.title)
+  const match = resources.find((resource) =>
+    (candidateUrl && resource.url && normalizeUrl(resource.url) === normalizeUrl(candidateUrl))
+    || (candidateTitle && resource.title === candidateTitle),
+  )
+  return match ? toAssistantResource(match) : undefined
+}
+
 export async function requestAssistant(request: AssistantRequest, options: ClientOptions = {}): Promise<AssistantResponse> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
-  if (!apiBaseUrl) return localDemo(request)
+  const useMocks = options.useMocks ?? (import.meta.env.VITE_USE_MOCKS === 'true' || !apiBaseUrl)
+  if (useMocks) return localDemo(request)
 
   const fetcher = options.fetcher ?? fetch
   try {
-    const response = await fetcher(`${apiBaseUrl.replace(/\/$/, '')}/api/assistant/chat`, {
+    const response = await fetcher(`${apiBaseUrl.replace(/\/$/, '')}/api/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+      body: JSON.stringify({
+        query: request.message,
+        top_k: 5,
+        category: request.category ?? null,
+        session_id: request.sessionId,
+      }),
       signal: AbortSignal.timeout(12_000),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    return await response.json() as AssistantResponse
+    const payload: unknown = await response.json()
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid response')
+    const row = payload as RemoteResult
+    const remoteResults = Array.isArray(row.results) ? row.results : []
+    const verifiedResources = remoteResults.map(mapVerifiedResult).filter((item): item is AssistantResource => Boolean(item))
+    const clarifications = Array.isArray(row.clarifications) ? row.clarifications.map(asText).filter(Boolean) : []
+    const reply = asText(row.answer) || (verifiedResources.length > 0
+      ? '我找到了几项可核验的校园资源。'
+      : '暂时没有找到可核验的资源，请换一种说法再试。')
+    return {
+      status: clarifications.length > 0 ? 'clarify' : verifiedResources.length > 0 ? 'results' : 'no_answer',
+      reply,
+      clarifications,
+      resources: verifiedResources,
+      clues: request.category ? [request.category] : [],
+      sessionId: asText(row.session_id) || undefined,
+    }
   } catch {
     throw new Error('导航服务暂时不可用，请稍后重试。')
   }
