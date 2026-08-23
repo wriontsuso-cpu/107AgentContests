@@ -1,5 +1,5 @@
 import { resources } from '@/data/resources'
-import { getCategory, RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
+import { getCategory, resolveCategory, RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
 import { searchResources } from '@/lib/resourceSearch'
 
 export interface AssistantHistoryMessage {
@@ -104,16 +104,43 @@ function normalizeUrl(value: string): string {
   return value.replace(/^http:/, 'https:').replace(/\/$/, '').toLowerCase()
 }
 
-function mapVerifiedResult(value: unknown): AssistantResource | undefined {
+async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: typeof fetch): Promise<AssistantResource | undefined> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const row = value as RemoteResult
   const candidateUrl = asText(row.url)
   const candidateTitle = asText(row.title)
-  const match = resources.find((resource) =>
-    (candidateUrl && resource.url && normalizeUrl(resource.url) === normalizeUrl(candidateUrl))
-    || (candidateTitle && resource.title === candidateTitle),
-  )
-  return match ? toAssistantResource(match) : undefined
+  if (!candidateUrl && !candidateTitle) return undefined
+
+  const explicitId = asText(row.id)
+  const endpoint = explicitId
+    ? `${apiBaseUrl}/api/resources/${encodeURIComponent(explicitId)}`
+    : `${apiBaseUrl}/api/resources?q=${encodeURIComponent(candidateTitle)}&page=1&page_size=5`
+  const verification = await fetcher(endpoint, { signal: AbortSignal.timeout(8_000) })
+  if (!verification.ok) return undefined
+  const payload: unknown = await verification.json()
+  const candidates = explicitId
+    ? [payload]
+    : payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? ((payload as RemoteResult).items ?? (payload as RemoteResult).resources ?? [])
+      : payload
+  const verified = Array.isArray(candidates) ? candidates : [candidates]
+  const match = verified
+    .map((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate as RemoteResult : undefined)
+    .find((candidate) => candidate && (
+      (candidateUrl && asText(candidate.url) && normalizeUrl(asText(candidate.url)) === normalizeUrl(candidateUrl))
+      || (candidateTitle && asText(candidate.title) === candidateTitle)
+    ))
+  if (!match) return undefined
+  const id = asText(match.id) || explicitId
+  if (!id) return undefined
+  const category = getCategory(resolveCategory(asText(match.category), asText(match.category_id), asText(match.category_name))).label
+  return {
+    id,
+    title: asText(match.title) || candidateTitle,
+    summary: asText(match.summary) || '暂无简介，请查看资源详情。',
+    category,
+    path: `/resources/${encodeURIComponent(id)}`,
+  }
 }
 
 export async function requestAssistant(request: AssistantRequest, options: ClientOptions = {}): Promise<AssistantResponse> {
@@ -139,7 +166,11 @@ export async function requestAssistant(request: AssistantRequest, options: Clien
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid response')
     const row = payload as RemoteResult
     const remoteResults = Array.isArray(row.results) ? row.results : []
-    const verifiedResources = remoteResults.map(mapVerifiedResult).filter((item): item is AssistantResource => Boolean(item))
+    const verifiedResources = (await Promise.all(remoteResults.map((item) => mapVerifiedResult(
+      item,
+      apiBaseUrl.replace(/\/$/, ''),
+      fetcher,
+    )))).filter((item): item is AssistantResource => Boolean(item))
     const clarifications = Array.isArray(row.clarifications) ? row.clarifications.map(asText).filter(Boolean) : []
     const reply = asText(row.answer) || (verifiedResources.length > 0
       ? '我找到了几项可核验的校园资源。'
