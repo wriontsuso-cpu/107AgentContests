@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import AppShell from '@/layout/AppShell'
 import HomePage from '@/pages/HomePage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import ResourcesPage from '@/pages/ResourcesPage'
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -17,7 +18,7 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'resources', element: <PlaceholderPage title="资源大厅" /> },
+      { path: 'resources', element: <ResourcesPage /> },
       { path: 'resources/:id', element: <PlaceholderPage title="资源详情" /> },
       { path: 'assistant', element: <PlaceholderPage title="AI 导航助手" /> },
       { path: '*', element: <NotFoundPage /> },
