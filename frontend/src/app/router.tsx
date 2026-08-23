@@ -1,18 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom'
 import AppShell from '@/layout/AppShell'
+import AssistantPage from '@/pages/AssistantPage'
 import HomePage from '@/pages/HomePage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import ResourceDetailPage from '@/pages/ResourceDetailPage'
 import ResourcesPage from '@/pages/ResourcesPage'
-
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section className="empty-page shell-width">
-      <span className="eyebrow">USTC Navigator</span>
-      <h1>{title}</h1>
-    </section>
-  )
-}
 
 export const router = createBrowserRouter([
   {
@@ -21,7 +13,7 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'resources', element: <ResourcesPage /> },
       { path: 'resources/:id', element: <ResourceDetailPage /> },
-      { path: 'assistant', element: <PlaceholderPage title="AI 导航助手" /> },
+      { path: 'assistant', element: <AssistantPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
