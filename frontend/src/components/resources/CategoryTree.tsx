@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { resourceCounts } from '@/data/resources'
+import { resourceCounts, totalResourceCount } from '@/data/catalogMetadata'
 import { RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
 
 interface CategoryTreeProps {
@@ -19,7 +19,7 @@ export default function CategoryTree({ selected, selectedGroup, onSelect, onSele
         onClick={() => onSelect(undefined)}
       >
         <span>全部资源</span>
-        <strong>{Object.values(resourceCounts).reduce((sum, count) => sum + count, 0)}</strong>
+        <strong>{totalResourceCount}</strong>
       </button>
       {RESOURCE_CATEGORIES.map((category) => (
         <div key={category.id}>

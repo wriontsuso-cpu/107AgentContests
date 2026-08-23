@@ -1,6 +1,7 @@
 import { ArrowRight, Search, Sparkles } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { totalResourceCount } from '@/data/catalogMetadata'
 
 export default function HeroExplorer() {
   const [query, setQuery] = useState('')
@@ -43,7 +44,7 @@ export default function HeroExplorer() {
             </button>
           </form>
           <div className="hero__under-search">
-            <span>已整理 1,295 条校园资源</span>
+            <span>已整理 {totalResourceCount.toLocaleString('zh-CN')} 条校园资源</span>
             <Link to="/assistant">
               <Sparkles size={15} aria-hidden="true" />
               让 AI 帮我梳理

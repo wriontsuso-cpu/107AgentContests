@@ -64,3 +64,24 @@ export async function getResourceById(id: string, options: ClientOptions = {}): 
   if (!response.ok) throw new Error('资源详情暂时不可用，请稍后重试。')
   return adaptResource(await response.json()) ?? undefined
 }
+
+export async function getResourceTags(options: ClientOptions = {}): Promise<string[]> {
+  const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
+  if (shouldUseMocks(apiBaseUrl, options.useMocks)) {
+    return [...new Set(resources.flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  }
+
+  const response = await (options.fetcher ?? fetch)(`${apiBaseUrl.replace(/\/$/, '')}/api/categories`, {
+    signal: AbortSignal.timeout(12_000),
+  })
+  if (!response.ok) throw new Error('筛选项暂时不可用。')
+  const payload: unknown = await response.json()
+  const row = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {}
+  const categories = Array.isArray(payload) ? payload : Array.isArray(row.categories) ? row.categories : []
+  const rootTags = Array.isArray(row.tags) ? row.tags : []
+  const categoryTags = categories.flatMap((category) => category && typeof category === 'object' && Array.isArray((category as Record<string, unknown>).tags)
+    ? (category as Record<string, unknown>).tags as unknown[]
+    : [])
+  return [...new Set([...rootTags, ...categoryTags].filter((tag): tag is string => typeof tag === 'string' && Boolean(tag.trim())).map((tag) => tag.trim()))]
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+}

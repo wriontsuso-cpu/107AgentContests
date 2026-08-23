@@ -64,9 +64,10 @@ function toAssistantResource(resource: (typeof resources)[number]): AssistantRes
 }
 
 function localDemo(request: AssistantRequest): AssistantResponse {
-  const category = inferCategory(request.message)
+  const conversation = [...request.history.filter((item) => item.role === 'user').map((item) => item.content), request.message].join(' ')
+  const category = inferCategory(conversation)
   const categoryInfo = category ? getCategory(category) : undefined
-  const matched = searchResources(resources, { query: request.message, category })
+  const matched = searchResources(resources, { query: conversation, category })
   const fallback = category ? resources.filter((resource) => resource.category === category) : resources
   const recommendations = (matched.length > 0 ? matched : fallback).slice(0, 3).map(toAssistantResource)
 
@@ -80,14 +81,15 @@ function localDemo(request: AssistantRequest): AssistantResponse {
     }
   }
 
-  const isBroad = request.message.length < 12 || /想|项目|机会|帮我/.test(request.message)
+  const isFollowUp = request.history.some((item) => item.role === 'user')
+  const isBroad = !isFollowUp && (request.message.length < 12 || /想|项目|机会|帮我/.test(request.message))
   return {
-    status: recommendations.length > 0 ? 'results' : 'no_answer',
+    status: isBroad ? 'clarify' : recommendations.length > 0 ? 'results' : 'no_answer',
     reply: isBroad
       ? `听起来你正在寻找“${categoryInfo.label}”方向的机会。为了推荐得更准，你可以继续告诉我偏好的时间、参与形式或目前阶段。`
       : `我按“${categoryInfo.label}”为你筛了一组更接近的校园入口，先从下面这些资源开始确认。`,
     clarifications: isBroad ? ['最近就能参加', '想先了解长期机会', '我有更具体的目标'] : [],
-    resources: recommendations,
+    resources: isBroad ? [] : recommendations,
     clues: [categoryInfo.label, isBroad ? '需求较宽泛' : '目标较明确'],
   }
 }

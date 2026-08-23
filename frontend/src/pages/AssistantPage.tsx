@@ -73,7 +73,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
           </div>
           <div className="assistant-mode">
             <i />
-            <span>{import.meta.env.VITE_API_BASE_URL ? '服务已连接' : '演示数据模式'}</span>
+            <span>{import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_USE_MOCKS !== 'true' ? '服务已连接' : '演示数据模式'}</span>
           </div>
         </header>
         <div className="assistant-workspace shell-width">

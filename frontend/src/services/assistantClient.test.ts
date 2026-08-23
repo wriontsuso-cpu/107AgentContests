@@ -3,9 +3,17 @@ import { requestAssistant } from './assistantClient'
 
 describe('requestAssistant', () => {
   it('returns a local guided response when no API base URL is configured', async () => {
-    const response = await requestAssistant({ message: '我想参加科创竞赛', history: [] }, { apiBaseUrl: '' })
+    const first = await requestAssistant({ message: '我想参加科创竞赛', history: [] }, { apiBaseUrl: '' })
+    expect(first.status).toBe('clarify')
+    expect(first.resources).toEqual([])
+
+    const response = await requestAssistant({
+      message: '最近就能参加',
+      history: [{ role: 'user', content: '我想参加科创竞赛' }, { role: 'assistant', content: first.reply }],
+    }, { apiBaseUrl: '' })
 
     expect(response.reply).toContain('竞赛')
+    expect(response.status).toBe('results')
     expect(response.resources.length).toBeGreaterThan(0)
     expect(response.clues).toContain('竞赛与实践')
   })

@@ -1,10 +1,19 @@
 import { expect, test } from '@playwright/test'
 
-const categoryLabels = ['办事与公共服务', '学习与学术', '科研与创新', '竞赛与实践', '社团与校园活动', '生活设施', '身心健康与权益', '升学就业与国际交流']
+const categories = [
+  ['办事与公共服务', 'services'], ['学习与学术', 'learning'], ['科研与创新', 'research'], ['竞赛与实践', 'competition'],
+  ['社团与校园活动', 'community'], ['生活设施', 'life'], ['身心健康与权益', 'wellbeing'], ['升学就业与国际交流', 'future'],
+] as const
 
-test('homepage exposes all eight exploration directions', async ({ page }) => {
+test('homepage exposes all eight exploration directions', async ({ page, isMobile }) => {
   await page.goto('/')
-  for (const label of categoryLabels) await expect(page.getByRole('link', { name: new RegExp(label) })).toBeVisible()
+  for (const [label, id] of categories) {
+    await page.goto('/')
+    await page.getByRole('link', { name: new RegExp(label) }).click()
+    await expect(page).toHaveURL(new RegExp(`category=${id}`))
+    if (isMobile) await page.getByRole('button', { name: '打开分类筛选' }).click()
+    await expect(page.getByRole('button', { name: new RegExp(label) })).toHaveAttribute('aria-pressed', 'true')
+  }
 })
 
 test('homepage search enters the resource directory', async ({ page }) => {
@@ -45,7 +54,12 @@ test('primary pages do not overflow the viewport', async ({ page }) => {
 
 test('keyboard users can reach and submit the primary search', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('searchbox', { name: '搜索校园资源' }).focus()
+  await page.locator('body').focus()
+  for (let step = 0; step < 12; step += 1) {
+    if (await page.getByRole('searchbox', { name: '搜索校园资源' }).evaluate((element) => element === document.activeElement)) break
+    await page.keyboard.press('Tab')
+  }
+  await expect(page.getByRole('searchbox', { name: '搜索校园资源' })).toBeFocused()
   await page.keyboard.type('奖助学金')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/q=/)

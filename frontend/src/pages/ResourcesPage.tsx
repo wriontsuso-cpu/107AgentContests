@@ -6,7 +6,7 @@ import ResourceResults from '@/components/resources/ResourceResults'
 import { resources } from '@/data/resources'
 import type { ResourceCategoryId } from '@/domain/categories'
 import { parseResourceFilters } from '@/lib/resourceSearch'
-import { listResources, type ResourceListResponse } from '@/services/resourceClient'
+import { getResourceTags, listResources, type ResourceListResponse } from '@/services/resourceClient'
 
 export default function ResourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -14,10 +14,17 @@ export default function ResourcesPage() {
   const [pageData, setPageData] = useState<ResourceListResponse>()
   const [error, setError] = useState<string>()
   const [attempt, setAttempt] = useState(0)
-  const availableTags = useMemo(() => [...new Set(resources
+  const localTags = useMemo(() => [...new Set(resources
     .filter((resource) => !filters.category || resource.category === filters.category)
     .filter((resource) => !filters.legacyCategory || resource.legacyCategory === filters.legacyCategory)
-    .flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN')).slice(0, 80), [filters.category, filters.legacyCategory])
+    .flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN')), [filters.category, filters.legacyCategory])
+  const [availableTags, setAvailableTags] = useState<string[]>(localTags)
+
+  useEffect(() => {
+    let active = true
+    getResourceTags().then((tags) => { if (active) setAvailableTags(tags.length > 0 ? tags : localTags) }).catch(() => { if (active) setAvailableTags(localTags) })
+    return () => { active = false }
+  }, [localTags])
 
   useEffect(() => {
     let active = true

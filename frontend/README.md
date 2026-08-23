@@ -25,10 +25,11 @@ pnpm test:e2e
 
 ## 数据边界
 
-- `src/data/raw/resources.json` 是当前比赛仓库内爬虫数据的前端快照。
+- `src/data/raw/resources.json` 保留团队当前 1295 条爬虫数据供后端入库，不进入前端生产依赖图。
+- `src/data/mockResources.ts` 只保留覆盖八类与主要页面状态的小型浏览器演示集。
 - `src/data/resourceAdapter.ts` 负责把当前旧字段和未来 API 字段统一成 `Resource`。
 - 更新爬虫结果时可以替换快照；只要保留 `articles` 数组或直接提供数组，页面无需修改。
-- 当前快照 1295 条记录全部保留；非法或非 HTTP(S) 地址不会显示外链按钮。
+- 适配器会保留标题有效的记录；非法或非 HTTP(S) 地址不会显示外链按钮。
 
 ## AI 服务接入
 
