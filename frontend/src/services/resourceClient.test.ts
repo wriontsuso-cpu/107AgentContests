@@ -8,6 +8,16 @@ describe('resourceClient', () => {
     expect(result.items.length).toBeLessThanOrEqual(5)
   })
 
+  it('loads the complete development catalog for a real secondary category', async () => {
+    const result = await listResources(
+      { category: 'services', legacyCategory: '学工通知', page: 1, pageSize: 12 },
+      { useMocks: true },
+    )
+
+    expect(result.total).toBeGreaterThan(0)
+    expect(result.items.every((resource) => resource.legacyCategory === '学工通知')).toBe(true)
+  })
+
   it('serializes the agreed browser API query and adapts its results', async () => {
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,

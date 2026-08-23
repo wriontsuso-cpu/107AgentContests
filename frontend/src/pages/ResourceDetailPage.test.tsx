@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
-import { resources } from '@/data/resources'
+import { loadLocalCatalog } from '@/data/localCatalog'
 import { getCategory } from '@/domain/categories'
 import ResourceDetailPage from './ResourceDetailPage'
 
@@ -17,7 +17,7 @@ function renderDetail(id: string) {
 
 describe('ResourceDetailPage', () => {
   it('shows traceable resource information and the original destination', async () => {
-    const resource = resources[0]
+    const resource = (await loadLocalCatalog())[0]
     renderDetail(resource.id)
 
     expect(await screen.findByRole('heading', { name: resource.title })).toBeInTheDocument()
@@ -29,7 +29,7 @@ describe('ResourceDetailPage', () => {
   })
 
   it('shows related resources without repeating the current item', async () => {
-    const resource = resources[0]
+    const resource = (await loadLocalCatalog())[0]
     renderDetail(resource.id)
 
     expect(await screen.findByRole('heading', { name: '或许你还需要' })).toBeInTheDocument()

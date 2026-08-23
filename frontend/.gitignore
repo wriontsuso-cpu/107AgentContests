@@ -3,6 +3,7 @@ dist/
 coverage/
 test-results/
 playwright-report/
+.vite-server*.log
 *.local
 public/brand/campus-hero.jpg
 public/brand/official-mark.zip

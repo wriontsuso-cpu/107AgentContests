@@ -1,4 +1,4 @@
-import { resources } from '@/data/resources'
+import { loadLocalCatalog } from '@/data/localCatalog'
 import { adaptResource, adaptResourceCollection } from '@/data/resourceAdapter'
 import type { Resource } from '@/domain/resource'
 import { paginateResources, searchResources, type ResourceFilters } from '@/lib/resourceSearch'
@@ -29,7 +29,8 @@ function shouldUseMocks(apiBaseUrl: string, explicit?: boolean): boolean {
 export async function listResources(request: ResourceListRequest, options: ClientOptions = {}): Promise<ResourceListResponse> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
   if (shouldUseMocks(apiBaseUrl, options.useMocks)) {
-    return paginateResources(searchResources(resources, request), request.page, request.pageSize ?? 12)
+    const localResources = await loadLocalCatalog()
+    return paginateResources(searchResources(localResources, request), request.page, request.pageSize ?? 12)
   }
 
   const params = new URLSearchParams()
@@ -55,7 +56,7 @@ export async function listResources(request: ResourceListRequest, options: Clien
 
 export async function getResourceById(id: string, options: ClientOptions = {}): Promise<Resource | undefined> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
-  if (shouldUseMocks(apiBaseUrl, options.useMocks)) return resources.find((resource) => resource.id === id)
+  if (shouldUseMocks(apiBaseUrl, options.useMocks)) return (await loadLocalCatalog()).find((resource) => resource.id === id)
 
   const response = await (options.fetcher ?? fetch)(`${apiBaseUrl.replace(/\/$/, '')}/api/resources/${encodeURIComponent(id)}`, {
     signal: AbortSignal.timeout(12_000),
@@ -68,7 +69,8 @@ export async function getResourceById(id: string, options: ClientOptions = {}): 
 export async function getResourceTags(options: ClientOptions = {}): Promise<string[]> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
   if (shouldUseMocks(apiBaseUrl, options.useMocks)) {
-    return [...new Set(resources.flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    const localResources = await loadLocalCatalog()
+    return [...new Set(localResources.flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
   }
 
   const response = await (options.fetcher ?? fetch)(`${apiBaseUrl.replace(/\/$/, '')}/api/categories`, {

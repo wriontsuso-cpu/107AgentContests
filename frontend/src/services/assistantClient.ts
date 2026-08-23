@@ -1,4 +1,5 @@
-import { resources } from '@/data/resources'
+import { loadLocalCatalog } from '@/data/localCatalog'
+import type { Resource } from '@/domain/resource'
 import { getCategory, resolveCategory, RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
 import { searchResources } from '@/lib/resourceSearch'
 
@@ -53,7 +54,7 @@ function inferCategory(message: string): ResourceCategoryId | undefined {
   return rules.find(([pattern]) => pattern.test(message))?.[1]
 }
 
-function toAssistantResource(resource: (typeof resources)[number]): AssistantResource {
+function toAssistantResource(resource: Resource): AssistantResource {
   return {
     id: resource.id,
     title: resource.title,
@@ -63,12 +64,13 @@ function toAssistantResource(resource: (typeof resources)[number]): AssistantRes
   }
 }
 
-function localDemo(request: AssistantRequest): AssistantResponse {
+async function localDemo(request: AssistantRequest): Promise<AssistantResponse> {
+  const localResources = await loadLocalCatalog()
   const conversation = [...request.history.filter((item) => item.role === 'user').map((item) => item.content), request.message].join(' ')
   const category = inferCategory(conversation)
   const categoryInfo = category ? getCategory(category) : undefined
-  const matched = searchResources(resources, { query: conversation, category })
-  const fallback = category ? resources.filter((resource) => resource.category === category) : resources
+  const matched = searchResources(localResources, { query: conversation, category })
+  const fallback = category ? localResources.filter((resource) => resource.category === category) : localResources
   const recommendations = (matched.length > 0 ? matched : fallback).slice(0, 3).map(toAssistantResource)
 
   if (!categoryInfo) {
