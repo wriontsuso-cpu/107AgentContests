@@ -7,7 +7,7 @@
 | 路径 | 说明 | 负责人 |
 |------|------|--------|
 | [`数据接口规范.md`](./数据接口规范.md) | 团队字段与 API 约定（权威） | D |
-| [`data without log in/`](./data%20without%20log%20in/) | 非登录可获取信息整合包（1295 条，含 search_text） | A 采集 / D 整合 |
+| [`data without log in/`](./data%20without%20log%20in/) | 非登录可获取信息整合包（1308 条，含 search_text） | A 采集 / D 整合 |
 | [`member-A/`](./member-A/) | 数据工程师：爬虫、清洗入库、分类树、导出脚本 | **A** |
 
 ## 成员 A 使用

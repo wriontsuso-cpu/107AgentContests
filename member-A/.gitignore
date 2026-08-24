@@ -5,6 +5,7 @@ secrets/
 debug_*.json
 debug_*.html
 debug_*.txt
+data/local_docs/files/
 __pycache__/
 *.pyc
 .venv/
