@@ -1,0 +1,8 @@
+crawler/data without log in/_auth_cookies.txt
+crawler/_auth_cookies.txt
+*_auth_cookies.txt
+*_cookies*.txt
+
+
+# 重建快照(本地保底，体积大，不入库)
+data without log in/备份/
