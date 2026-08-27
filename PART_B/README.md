@@ -1,110 +1,86 @@
 # PART_B Resource Navigation Backend
 
-This folder contains a reusable LLM client, a replaceable knowledge-base
-interface, a command-line client, and an HTTP API for a future web frontend.
+This backend follows the repository-level `数据接口规范.md` contract and uses
+`../data without log in/原始数据_整合.json` as its authoritative resource data.
 
-## Install
+## Install And Run
 
 ```powershell
 cd PART_B
 pip install -r requirements.txt
+python -m uvicorn api:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Copy `.env.example` to `.env`, then configure the LLM values. Keep
-`KNOWLEDGE_BASE_PROVIDER=placeholder` until the real database adapter is ready.
+API documentation: `http://127.0.0.1:8000/docs`
 
-## Command Line
+The command-line interface remains available with `python main.py`.
 
-```powershell
-python main.py
+## API Contract
+
+```text
+POST /api/search
+GET  /api/resources
+GET  /api/resources/{id}
+GET  /api/categories
+POST /api/sessions/{session_id}/exit
+GET  /api/health
 ```
 
-The process keeps accepting questions until the user enters `exit`, `quit`,
-`q`, or `退出`.
-
-## Web API
-
-Start the development server from `PART_B`:
-
-```powershell
-uvicorn api:app --reload --host 127.0.0.1 --port 8000
-```
-
-Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
-
-The frontend flow is:
-
-1. Create a session when the page opens.
-
-```http
-POST /api/v1/sessions
-```
-
-```json
-{"session_id":"generated-id","status":"active"}
-```
-
-2. Submit each user question and render both `answer` and `resources`.
-
-```http
-POST /api/v1/sessions/{session_id}/questions
-Content-Type: application/json
-```
-
-```json
-{"question":"How can I learn RAG?"}
-```
+The assistant request required by the shared specification is:
 
 ```json
 {
-  "session_id": "generated-id",
-  "answer": "A concise navigation answer",
-  "resources": [
-    {
-      "id": "resource-id",
-      "title": "Resource title",
-      "url": "https://example.com",
-      "summary": "Short description",
-      "source": "knowledge_base",
-      "metadata": {}
-    }
-  ]
+  "query": "秋季要不要抢图书馆座位？",
+  "top_k": 5,
+  "category": null,
+  "session_id": null
 }
 ```
 
-3. Connect the exit button to the session exit endpoint.
+The response contains database records only:
 
-```http
-POST /api/v1/sessions/{session_id}/exit
+```json
+{
+  "results": [],
+  "answer": "基于数据库资源的简要回答",
+  "session_id": "generated-session-id",
+  "clarifications": []
+}
 ```
 
-Questions submitted to a closed session return HTTP `409`. Sessions are stored
-in memory for now and are cleared whenever the backend restarts.
+`GET /api/resources` accepts `q`, `category`, `group`, `tag`, `page`, and
+`page_size`, matching the current frontend resource browser.
 
-## Connect the Knowledge Base
+## Knowledge Base
 
-`knowledge_base.py` defines the stable database contract:
+`JsonKnowledgeBase` loads all 1295 records once when the application starts.
+The current source file lacks the documented `id` and `search_text` fields, so
+the adapter derives them without modifying the source data:
 
-```python
-class KnowledgeBase(ABC):
-    def search(self, query: str, limit: int) -> list[Resource]:
-        ...
+- `id`: first 16 characters of the URL MD5 hash.
+- `search_text`: title, category, tags, summary, content, source, and access method.
+
+Search weights title, category, tags, summary, content, and `search_text`, and
+supports both the 32 source categories and the frontend's grouped categories.
+Every clickable result comes from this dataset. Unknown URLs emitted by a model
+are removed from the answer.
+
+To replace the JSON file with a vector database, implement the `KnowledgeBase`
+interface and register its provider in `build_knowledge_base()`; the API,
+frontend, and LLM service do not need to change.
+
+## Frontend Development
+
+The local frontend uses `frontend/.env.development.local`:
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_USE_MOCKS=false
 ```
 
-To connect the real database:
+Start it in another terminal with:
 
-1. Add a class implementing `KnowledgeBase.search()`.
-2. Convert database rows or search hits into `Resource` objects.
-3. Register the new provider in `build_knowledge_base()`.
-4. Set `KNOWLEDGE_BASE_PROVIDER` and its connection values in `.env`.
-
-Neither the CLI, web API, nor LLM integration needs to change when the adapter
-is replaced.
-
-## Extension Points
-
-- `llm_client.py`: add model providers with a different API protocol.
-- `knowledge_base.py`: connect SQL, vector, or HTTP retrieval backends.
-- `navigation_service.py`: add query refinement, reranking, and skills.
-- `session_store.py`: replace local sessions with Redis or persistent storage.
-- `api.py`: add authentication, streaming answers, and user feedback routes.
+```powershell
+cd frontend
+corepack pnpm@9.15.5 dev
+```

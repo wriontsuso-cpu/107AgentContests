@@ -274,7 +274,7 @@ textarea {
 }
 
 .page-enter {
-  animation: page-enter 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: page-enter 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes page-enter {
@@ -284,7 +284,7 @@ textarea {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -2374,10 +2374,6 @@ textarea {
 .assistant-chat__toolbar > div:first-child { display: grid; gap: 3px; }
 .assistant-chat__toolbar small { color: #8a94a3; font-size: 9px; font-weight: 500; letter-spacing: 0; }
 .assistant-storage-warning { margin: 14px 0 0; color: #875c16; font-size: 11px; }
-.guest-transfer-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding: 11px 13px; border-radius: 8px; color: #455267; background: #edf4f8; font-size: 11px; }
-.guest-transfer-prompt span { margin-right: auto; }
-.guest-transfer-prompt button { border: 0; color: var(--ustc-blue); background: transparent; cursor: pointer; font-size: 11px; font-weight: 680; }
-
 .conversation-history {
   padding: 20px;
   border: 1px solid var(--line);
@@ -2389,13 +2385,27 @@ textarea {
 .conversation-history > header div { display: grid; }
 .conversation-history > header span { color: var(--ink); font-size: 12px; font-weight: 680; }
 .conversation-history > header small { color: var(--muted); font-size: 9px; }
-.conversation-history ul { display: grid; gap: 6px; margin: 15px 0 0; padding: 0; list-style: none; }
-.conversation-history li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line); }
+.conversation-history__new { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; gap: 7px; margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--deep-blue); background: rgba(255, 255, 255, 0.66); cursor: pointer; font-size: 10px; font-weight: 680; }
+.conversation-history__new:disabled { cursor: not-allowed; opacity: .55; }
+.conversation-history__search { display: grid; min-height: 36px; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; margin-top: 9px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(255, 255, 255, 0.58); }
+.conversation-history__search input { min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 10px; }
+.conversation-history ul { display: grid; max-height: 310px; gap: 4px; margin: 10px -6px 0; padding: 0 6px; overflow-y: auto; list-style: none; }
+.conversation-history li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line); border-radius: 6px; }
+.conversation-history li:hover,
+.conversation-history__item--active { background: rgba(22, 69, 113, 0.09); }
 .conversation-history li button { border: 0; color: var(--ink); background: transparent; cursor: pointer; }
 .conversation-history li > button:first-child { display: grid; gap: 3px; padding: 10px 4px; text-align: left; font-size: 11px; }
 .conversation-history li small { color: var(--muted); font-size: 8px; }
 .conversation-history li > button:last-child { padding: 8px; color: var(--muted); }
 .conversation-history__empty { margin: 16px 0 0; color: var(--muted); font-size: 10px; }
+
+.resource-search-history { display: grid; gap: 8px; }
+.resource-search-history header { display: flex; align-items: center; gap: 7px; color: #607087; font-size: 10px; font-weight: 680; }
+.resource-search-history ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.resource-search-history li { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-radius: 6px; background: rgba(255, 255, 255, 0.44); }
+.resource-search-history li:hover { background: rgba(255, 255, 255, 0.72); }
+.resource-search-history button { min-width: 0; padding: 8px 9px; overflow: hidden; border: 0; color: #273b56; background: transparent; cursor: pointer; font-size: 10px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.resource-search-history li button:last-child { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; color: #7b8797; }
 
 /* Detail photography */
 .detail-page { position: relative; overflow: hidden; background: #f1efe8; }

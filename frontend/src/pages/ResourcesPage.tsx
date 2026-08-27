@@ -10,9 +10,11 @@ import { pageVisuals } from '@/data/pagePhotography'
 import { resources } from '@/data/resources'
 import type { ResourceCategoryId } from '@/domain/categories'
 import { parseResourceFilters } from '@/lib/resourceSearch'
+import { useProfile } from '@/profile/ProfileContext'
 import { getResourceTags, listResources, type ResourceListResponse } from '@/services/resourceClient'
 
 export default function ResourcesPage() {
+  const { searches, saveSearch, deleteSearch } = useProfile()
   const [searchParams, setSearchParams] = useSearchParams()
   const paramsRef = useRef(searchParams)
   paramsRef.current = searchParams
@@ -25,6 +27,14 @@ export default function ResourcesPage() {
     .filter((resource) => !filters.legacyCategory || resource.legacyCategory === filters.legacyCategory)
     .flatMap((resource) => resource.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN')), [filters.category, filters.legacyCategory])
   const [availableTags, setAvailableTags] = useState<string[]>(localTags)
+  const saveSearchRef = useRef(saveSearch)
+  saveSearchRef.current = saveSearch
+
+  useEffect(() => {
+    const query = filters.query.trim()
+    if (!query) return
+    void saveSearchRef.current(query)
+  }, [filters.query])
 
   useEffect(() => {
     let active = true
@@ -84,6 +94,8 @@ export default function ResourcesPage() {
               onGroupChange={(legacyCategory) => updateParams({ legacyCategory, tag: undefined })}
               onTagChange={(tag) => updateParams({ tag })}
               onClear={clearFilters}
+              recentSearches={searches}
+              onDeleteSearch={(searchId) => void deleteSearch(searchId)}
             />
           </GlassPanel>
           <GlassPanel tone="warm" className="resource-results">

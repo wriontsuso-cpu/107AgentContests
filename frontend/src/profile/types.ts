@@ -26,6 +26,13 @@ export interface StoredConversation {
 
 export type ConversationDraft = Omit<StoredConversation, 'profileId'>
 
+export interface LocalSearchRecord {
+  id: string
+  profileId: string
+  query: string
+  createdAt: string
+}
+
 export interface ProfileStore {
   listProfiles(): Promise<LocalProfile[]>
   createProfile(nickname: string, pin: string): Promise<LocalProfile>
@@ -34,4 +41,7 @@ export interface ProfileStore {
   listConversations(profileId: string): Promise<StoredConversation[]>
   saveConversation(profileId: string, conversation: ConversationDraft): Promise<StoredConversation>
   deleteConversation(conversationId: string): Promise<void>
+  listSearches(profileId: string): Promise<LocalSearchRecord[]>
+  saveSearch(profileId: string, query: string): Promise<LocalSearchRecord>
+  deleteSearch(searchId: string): Promise<void>
 }

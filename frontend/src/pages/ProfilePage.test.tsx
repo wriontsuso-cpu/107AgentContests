@@ -40,7 +40,7 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: '创建并进入' }))
 
     expect(await screen.findByRole('heading', { name: '你好，余伊健。' })).toBeInTheDocument()
-    expect(screen.getByText('最近保存 0 / 5 次会话')).toBeInTheDocument()
+    expect(screen.getByText('本机保存 0 次会话')).toBeInTheDocument()
   })
 
   it('locks the profile and rejects an incorrect PIN before unlocking', async () => {

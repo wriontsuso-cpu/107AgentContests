@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AssistantClient } from '@/services/assistantClient'
 import AssistantPage from './AssistantPage'
 import { ProfileProvider } from '@/profile/ProfileContext'
-import { createIndexedDbProfileStore } from '@/profile/profileStore'
+import { createIndexedDbProfileStore, DEVICE_HISTORY_OWNER_ID } from '@/profile/profileStore'
 import type { ProfileStore } from '@/profile/types'
 
 function renderPage(client?: AssistantClient, store: ProfileStore = createIndexedDbProfileStore({ databaseName: `assistant-${crypto.randomUUID()}` })) {
@@ -23,7 +23,26 @@ describe('AssistantPage', () => {
     expect(screen.getByRole('button', { name: '我想参加竞赛或实践项目' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
     expect(screen.getByText('演示数据模式')).toBeInTheDocument()
-    expect(await screen.findByText('访客模式 · 对话不会保存')).toBeInTheDocument()
+    expect(await screen.findByText('本机保存 · 0 次会话')).toBeInTheDocument()
+  })
+
+  it('keeps guest questions and AI replies in searchable local history', async () => {
+    const user = userEvent.setup()
+    const store = createIndexedDbProfileStore({ databaseName: `assistant-guest-${crypto.randomUUID()}` })
+    const client = vi.fn().mockResolvedValue({
+      status: 'results', reply: '请从图书馆座位预约入口办理。', clarifications: [], clues: [], resources: [],
+    }) as AssistantClient
+    renderPage(client, store)
+
+    await screen.findByText('本机保存 · 0 次会话')
+    await user.type(screen.getByRole('textbox', { name: '描述你的需求' }), '怎么预约图书馆座位')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    expect(await screen.findByText('请从图书馆座位预约入口办理。')).toBeInTheDocument()
+    expect(await screen.findByText('本机保存 · 1 次会话')).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: '搜索历史记录' }), '预约')
+    expect(screen.getByRole('button', { name: /^怎么预约图书馆座位/ })).toBeInTheDocument()
+    expect((await store.listConversations(DEVICE_HISTORY_OWNER_ID))[0]?.messages).toHaveLength(3)
   })
 
   it('saves an unlocked profile conversation and exposes it in recent history', async () => {
@@ -36,11 +55,11 @@ describe('AssistantPage', () => {
     }) as AssistantClient
     renderPage(client, store)
 
-    await screen.findByText('陈泰然 · 自动保存最近 5 次')
+    await screen.findByText('陈泰然 · 本机保存 0 次会话')
     await user.type(screen.getByRole('textbox', { name: '描述你的需求' }), '查询校医院')
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
-    expect(await screen.findByRole('button', { name: /查询校医院/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^查询校医院/ })).toBeInTheDocument()
     expect((await store.listConversations(profile.id))[0]?.messages).toHaveLength(3)
   })
 
@@ -88,7 +107,7 @@ describe('AssistantPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('导航服务暂时不可用')
     expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
-    expect(screen.getByText('查询校医院')).toBeInTheDocument()
+    expect(screen.getAllByText('查询校医院').length).toBeGreaterThan(0)
   })
 })
 import 'fake-indexeddb/auto'

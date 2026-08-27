@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { requestAssistant } from './assistantClient'
+import { closeAssistantSession, requestAssistant } from './assistantClient'
 
 describe('requestAssistant', () => {
   it('returns a local guided response when no API base URL is configured', async () => {
@@ -43,7 +43,7 @@ describe('requestAssistant', () => {
 
     expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/search', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ query: request.message, top_k: 5, category: null, session_id: undefined }),
+      body: JSON.stringify({ query: request.message, top_k: 5, category: null, session_id: undefined, history: request.history }),
     }))
     expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/resources/full-catalog-1295', expect.any(Object))
     expect(response.resources[0].url).toBe('https://full.ustc.edu.cn/resource')
@@ -65,5 +65,20 @@ describe('requestAssistant', () => {
     )
 
     expect(response.resources).toEqual([])
+  })
+
+  it('closes the active backend session when the conversation is reset', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+
+    await closeAssistantSession('s-1', {
+      apiBaseUrl: 'https://api.example.test/',
+      useMocks: false,
+      fetcher: fetcher as typeof fetch,
+    })
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://api.example.test/api/sessions/s-1/exit',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 })

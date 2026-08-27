@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { createIndexedDbProfileStore } from './profileStore'
+import { createIndexedDbProfileStore, DEVICE_HISTORY_OWNER_ID } from './profileStore'
 
 function createStore() {
   return createIndexedDbProfileStore({ databaseName: `ustc-navigator-test-${crypto.randomUUID()}` })
@@ -18,7 +18,7 @@ describe('IndexedDB profile store', () => {
     await expect(store.verifyPin(profile.id, '9999')).resolves.toBe(false)
   })
 
-  it('isolates profiles and retains only the five most recent conversations', async () => {
+  it('isolates profiles and retains the complete conversation history', async () => {
     const store = createStore()
     const first = await store.createProfile('朱荣骐', '2345')
     const second = await store.createProfile('陈泰然', '3456')
@@ -41,9 +41,21 @@ describe('IndexedDB profile store', () => {
     })
 
     const firstHistory = await store.listConversations(first.id)
-    expect(firstHistory).toHaveLength(5)
-    expect(firstHistory.map((item) => item.title)).toEqual(['会话 6', '会话 5', '会话 4', '会话 3', '会话 2'])
+    expect(firstHistory).toHaveLength(6)
+    expect(firstHistory.map((item) => item.title)).toEqual(['会话 6', '会话 5', '会话 4', '会话 3', '会话 2', '会话 1'])
     expect(await store.listConversations(second.id)).toHaveLength(1)
+  })
+
+  it('stores and deletes resource searches for the local device', async () => {
+    const store = createStore()
+    const first = await store.saveSearch(DEVICE_HISTORY_OWNER_ID, '图书馆预约')
+    await store.saveSearch(DEVICE_HISTORY_OWNER_ID, '校医院')
+
+    const searches = (await store.listSearches(DEVICE_HISTORY_OWNER_ID)).map((item) => item.query)
+    expect(searches).toHaveLength(2)
+    expect(searches).toEqual(expect.arrayContaining(['校医院', '图书馆预约']))
+    await store.deleteSearch(first.id)
+    expect((await store.listSearches(DEVICE_HISTORY_OWNER_ID)).map((item) => item.query)).toEqual(['校医院'])
   })
 
   it('deletes a profile together with its conversations', async () => {

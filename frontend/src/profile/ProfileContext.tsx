@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react'
-import { indexedDbProfileStore } from './profileStore'
-import type { ConversationDraft, LocalProfile, ProfileStore, StoredConversation } from './types'
+import { DEVICE_HISTORY_OWNER_ID, indexedDbProfileStore } from './profileStore'
+import type { ConversationDraft, LocalProfile, LocalSearchRecord, ProfileStore, StoredConversation } from './types'
 
 const SESSION_KEY = 'ustc-navigator-active-profile'
 
@@ -16,8 +16,7 @@ function rememberActiveProfile(profileId: string) {
   try {
     sessionStorage.setItem(SESSION_KEY, profileId)
   } catch {
-    // Some privacy modes block session storage. The profile remains active
-    // until the current React session ends.
+    // The profile remains active until the current React session ends.
   }
 }
 
@@ -33,6 +32,7 @@ interface ProfileContextValue {
   profiles: LocalProfile[]
   activeProfile: LocalProfile | null
   conversations: StoredConversation[]
+  searches: LocalSearchRecord[]
   loading: boolean
   storageAvailable: boolean
   createProfile: (nickname: string, pin: string) => Promise<LocalProfile>
@@ -42,9 +42,8 @@ interface ProfileContextValue {
   saveConversation: (draft: ConversationDraft) => Promise<StoredConversation | undefined>
   deleteConversation: (conversationId: string) => Promise<void>
   refreshConversations: () => Promise<void>
-  pendingGuestConversation: ConversationDraft | null
-  offerGuestConversation: (conversation: ConversationDraft) => void
-  clearGuestConversation: () => void
+  saveSearch: (query: string) => Promise<LocalSearchRecord | undefined>
+  deleteSearch: (searchId: string) => Promise<void>
 }
 
 const ProfileContext = createContext<ProfileContextValue | null>(null)
@@ -53,15 +52,18 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
   const [profiles, setProfiles] = useState<LocalProfile[]>([])
   const [activeProfile, setActiveProfile] = useState<LocalProfile | null>(null)
   const [conversations, setConversations] = useState<StoredConversation[]>([])
+  const [searches, setSearches] = useState<LocalSearchRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [storageAvailable, setStorageAvailable] = useState(true)
-  const [pendingGuestConversation, setPendingGuestConversation] = useState<ConversationDraft | null>(null)
+
+  const historyOwnerId = activeProfile?.id ?? DEVICE_HISTORY_OWNER_ID
 
   const markStorageUnavailable = () => {
     forgetActiveProfile()
     setStorageAvailable(false)
     setActiveProfile(null)
     setConversations([])
+    setSearches([])
   }
 
   useEffect(() => {
@@ -74,7 +76,13 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
         const activeId = readActiveProfileId()
         const restored = available.find((profile) => profile.id === activeId) ?? null
         setActiveProfile(restored)
-        if (restored) setConversations(await store.listConversations(restored.id))
+        const ownerId = restored?.id ?? DEVICE_HISTORY_OWNER_ID
+        const [storedConversations, storedSearches] = await Promise.all([
+          store.listConversations(ownerId),
+          store.listSearches(ownerId),
+        ])
+        setConversations(storedConversations)
+        setSearches(storedSearches)
       } catch {
         if (!cancelled) markStorageUnavailable()
       } finally {
@@ -92,9 +100,8 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
   }
 
   const refreshConversations = async () => {
-    if (!activeProfile) return setConversations([])
     try {
-      setConversations(await store.listConversations(activeProfile.id))
+      setConversations(await store.listConversations(historyOwnerId))
     } catch {
       markStorageUnavailable()
     }
@@ -106,7 +113,12 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
       await refreshProfiles()
       rememberActiveProfile(profile.id)
       setActiveProfile(profile)
-      setConversations([])
+      const [storedConversations, storedSearches] = await Promise.all([
+        store.listConversations(profile.id),
+        store.listSearches(profile.id),
+      ])
+      setConversations(storedConversations)
+      setSearches(storedSearches)
       return profile
     } catch (error) {
       if (!(error instanceof Error) || !/昵称|PIN/.test(error.message)) markStorageUnavailable()
@@ -122,7 +134,12 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
       if (!profile) return false
       rememberActiveProfile(profile.id)
       setActiveProfile(profile)
-      setConversations(await store.listConversations(profile.id))
+      const [storedConversations, storedSearches] = await Promise.all([
+        store.listConversations(profile.id),
+        store.listSearches(profile.id),
+      ])
+      setConversations(storedConversations)
+      setSearches(storedSearches)
       return true
     } catch {
       markStorageUnavailable()
@@ -133,13 +150,30 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
   const lockProfile = () => {
     forgetActiveProfile()
     setActiveProfile(null)
-    setConversations([])
+    void Promise.all([
+      store.listConversations(DEVICE_HISTORY_OWNER_ID),
+      store.listSearches(DEVICE_HISTORY_OWNER_ID),
+    ])
+      .then(([storedConversations, storedSearches]) => {
+        setConversations(storedConversations)
+        setSearches(storedSearches)
+      })
+      .catch(markStorageUnavailable)
   }
 
   const deleteProfile = async (profileId: string) => {
     try {
       await store.deleteProfile(profileId)
-      if (activeProfile?.id === profileId) lockProfile()
+      if (activeProfile?.id === profileId) {
+        forgetActiveProfile()
+        setActiveProfile(null)
+        const [storedConversations, storedSearches] = await Promise.all([
+          store.listConversations(DEVICE_HISTORY_OWNER_ID),
+          store.listSearches(DEVICE_HISTORY_OWNER_ID),
+        ])
+        setConversations(storedConversations)
+        setSearches(storedSearches)
+      }
       await refreshProfiles()
     } catch {
       markStorageUnavailable()
@@ -147,10 +181,10 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
   }
 
   const saveConversation = async (draft: ConversationDraft) => {
-    if (!activeProfile || !storageAvailable) return undefined
+    if (!storageAvailable) return undefined
     try {
-      const saved = await store.saveConversation(activeProfile.id, draft)
-      setConversations(await store.listConversations(activeProfile.id))
+      const saved = await store.saveConversation(historyOwnerId, draft)
+      setConversations(await store.listConversations(historyOwnerId))
       return saved
     } catch {
       markStorageUnavailable()
@@ -159,17 +193,39 @@ export function ProfileProvider({ children, store = indexedDbProfileStore }: Pro
   }
 
   const deleteConversation = async (conversationId: string) => {
-    if (!activeProfile) return
+    if (!storageAvailable) return
     try {
       await store.deleteConversation(conversationId)
-      setConversations(await store.listConversations(activeProfile.id))
+      setConversations(await store.listConversations(historyOwnerId))
+    } catch {
+      markStorageUnavailable()
+    }
+  }
+
+  const saveSearch = async (query: string) => {
+    if (!storageAvailable || !query.trim()) return undefined
+    try {
+      const saved = await store.saveSearch(historyOwnerId, query)
+      setSearches(await store.listSearches(historyOwnerId))
+      return saved
+    } catch {
+      markStorageUnavailable()
+      return undefined
+    }
+  }
+
+  const deleteSearch = async (searchId: string) => {
+    if (!storageAvailable) return
+    try {
+      await store.deleteSearch(searchId)
+      setSearches(await store.listSearches(historyOwnerId))
     } catch {
       markStorageUnavailable()
     }
   }
 
   return (
-    <ProfileContext.Provider value={{ profiles, activeProfile, conversations, loading, storageAvailable, createProfile, unlockProfile, lockProfile, deleteProfile, saveConversation, deleteConversation, refreshConversations, pendingGuestConversation, offerGuestConversation: setPendingGuestConversation, clearGuestConversation: () => setPendingGuestConversation(null) }}>
+    <ProfileContext.Provider value={{ profiles, activeProfile, conversations, searches, loading, storageAvailable, createProfile, unlockProfile, lockProfile, deleteProfile, saveConversation, deleteConversation, refreshConversations, saveSearch, deleteSearch }}>
       {children}
     </ProfileContext.Provider>
   )

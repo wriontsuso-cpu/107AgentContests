@@ -70,7 +70,7 @@ export default function ProfilePage() {
             <div className="profile-dashboard">
               <div className="profile-status-card">
                 <ShieldCheck aria-hidden="true" />
-                <div><strong>档案已解锁</strong><p>最近保存 {conversations.length} / 5 次会话</p></div>
+                <div><strong>档案已解锁</strong><p>本机保存 {conversations.length} 次会话</p></div>
               </div>
               <button className="button button--secondary" type="button" onClick={lockProfile}>
                 <LockKeyhole size={18} aria-hidden="true" />锁定档案

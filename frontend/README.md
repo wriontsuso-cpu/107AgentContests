@@ -33,7 +33,7 @@ pnpm test:e2e
 
 ## AI 服务接入
 
-不配置环境变量时，AI 页面使用本地演示响应。连接后端时创建 `.env.local`：
+不配置环境变量时，AI 页面使用本地演示响应。仅在本地开发服务器连接后端时创建 `.env.development.local`：
 
 ```dotenv
 VITE_API_BASE_URL=http://127.0.0.1:8000
@@ -48,6 +48,8 @@ GET  {VITE_API_BASE_URL}/api/resources/{id}
 POST {VITE_API_BASE_URL}/api/search
 ```
 
+资源搜索关键词与 AI 完整会话会写入浏览器 IndexedDB。访客记录属于当前设备；解锁本机档案后，记录按档案隔离。服务端不持久化这些历史，清除浏览器站点数据会永久删除它们。
+
 请求结构：
 
 ```json
@@ -55,9 +57,15 @@ POST {VITE_API_BASE_URL}/api/search
   "query": "我想参加科创竞赛",
   "top_k": 5,
   "category": null,
-  "session_id": "可选"
+  "session_id": "可选",
+  "history": [
+    { "role": "user", "content": "上一轮问题" },
+    { "role": "assistant", "content": "上一轮回答" }
+  ]
 }
 ```
+
+前端恢复旧会话后会把最近 40 条消息随请求发送，后端将最近消息加入数据库检索与回答上下文；历史正文仍只保存在浏览器端。
 
 响应结构：
 

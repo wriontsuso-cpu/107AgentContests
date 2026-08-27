@@ -1,9 +1,12 @@
-import type { LocalProfile, ProfileStore, StoredConversation } from './types'
+import type { LocalProfile, LocalSearchRecord, ProfileStore, StoredConversation } from './types'
 
-const DATABASE_VERSION = 1
+const DATABASE_VERSION = 2
 const PROFILE_STORE = 'profiles'
 const CONVERSATION_STORE = 'conversations'
+const SEARCH_STORE = 'searches'
 const PIN_ITERATIONS = 100_000
+
+export const DEVICE_HISTORY_OWNER_ID = '__local_device__'
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -52,6 +55,11 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
             const store = db.createObjectStore(CONVERSATION_STORE, { keyPath: 'id' })
             store.createIndex('profileId', 'profileId', { unique: false })
             store.createIndex('profileUpdatedAt', ['profileId', 'updatedAt'], { unique: false })
+          }
+          if (!db.objectStoreNames.contains(SEARCH_STORE)) {
+            const store = db.createObjectStore(SEARCH_STORE, { keyPath: 'id' })
+            store.createIndex('profileId', 'profileId', { unique: false })
+            store.createIndex('profileCreatedAt', ['profileId', 'createdAt'], { unique: false })
           }
         }
         request.onsuccess = () => resolve(request.result)
@@ -107,11 +115,14 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
 
     async deleteProfile(profileId) {
       const db = await database()
-      const transaction = db.transaction([PROFILE_STORE, CONVERSATION_STORE], 'readwrite')
+      const transaction = db.transaction([PROFILE_STORE, CONVERSATION_STORE, SEARCH_STORE], 'readwrite')
       transaction.objectStore(PROFILE_STORE).delete(profileId)
       const conversationStore = transaction.objectStore(CONVERSATION_STORE)
       const conversations = await requestResult(conversationStore.index('profileId').getAll(profileId) as IDBRequest<StoredConversation[]>)
       for (const conversation of conversations) conversationStore.delete(conversation.id)
+      const searchStore = transaction.objectStore(SEARCH_STORE)
+      const searches = await requestResult(searchStore.index('profileId').getAll(profileId) as IDBRequest<LocalSearchRecord[]>)
+      for (const search of searches) searchStore.delete(search.id)
       await transactionDone(transaction)
     },
 
@@ -131,14 +142,7 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
       const stored: StoredConversation = { ...conversation, profileId }
       const db = await database()
       const transaction = db.transaction(CONVERSATION_STORE, 'readwrite')
-      const store = transaction.objectStore(CONVERSATION_STORE)
-      store.put(stored)
-      const conversations = await requestResult(store.index('profileId').getAll(profileId) as IDBRequest<StoredConversation[]>)
-      const stale = conversations
-        .filter((item) => item.id !== stored.id)
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .slice(4)
-      for (const item of stale) store.delete(item.id)
+      transaction.objectStore(CONVERSATION_STORE).put(stored)
       await transactionDone(transaction)
       return stored
     },
@@ -147,6 +151,39 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
       const db = await database()
       const transaction = db.transaction(CONVERSATION_STORE, 'readwrite')
       transaction.objectStore(CONVERSATION_STORE).delete(conversationId)
+      await transactionDone(transaction)
+    },
+
+    async listSearches(profileId) {
+      const db = await database()
+      const transaction = db.transaction(SEARCH_STORE, 'readonly')
+      const store = transaction.objectStore(SEARCH_STORE)
+      const request = store.index('profileCreatedAt').getAll(IDBKeyRange.bound([profileId, ''], [profileId, '\uffff']))
+      const searches = await requestResult(request as IDBRequest<LocalSearchRecord[]>)
+      await transactionDone(transaction)
+      return searches.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    },
+
+    async saveSearch(profileId, query) {
+      const normalizedQuery = query.trim()
+      if (!normalizedQuery) throw new Error('搜索内容不能为空')
+      const search: LocalSearchRecord = {
+        id: crypto.randomUUID(),
+        profileId,
+        query: normalizedQuery,
+        createdAt: new Date().toISOString(),
+      }
+      const db = await database()
+      const transaction = db.transaction(SEARCH_STORE, 'readwrite')
+      transaction.objectStore(SEARCH_STORE).put(search)
+      await transactionDone(transaction)
+      return search
+    },
+
+    async deleteSearch(searchId) {
+      const db = await database()
+      const transaction = db.transaction(SEARCH_STORE, 'readwrite')
+      transaction.objectStore(SEARCH_STORE).delete(searchId)
       await transactionDone(transaction)
     },
   }

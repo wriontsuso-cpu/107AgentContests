@@ -22,6 +22,7 @@ class LLMConfig:
 @dataclass(frozen=True)
 class KnowledgeBaseConfig:
     provider: str
+    data_path: Path
     endpoint: str | None = None
     api_key: str = ""
     top_k: int = 5
@@ -64,8 +65,19 @@ def load_knowledge_base_config() -> KnowledgeBaseConfig:
     if top_k <= 0:
         raise ValueError("KNOWLEDGE_BASE_TOP_K must be greater than 0.")
 
+    default_data_path = (
+        Path(__file__).resolve().parent.parent
+        / "data without log in"
+        / "原始数据_整合.json"
+    )
+    configured_path = os.getenv("KNOWLEDGE_BASE_DATA_PATH", "").strip()
+    data_path = Path(configured_path) if configured_path else default_data_path
+    if not data_path.is_absolute():
+        data_path = Path(__file__).resolve().parent / data_path
+
     return KnowledgeBaseConfig(
-        provider=os.getenv("KNOWLEDGE_BASE_PROVIDER", "placeholder"),
+        provider=os.getenv("KNOWLEDGE_BASE_PROVIDER", "json"),
+        data_path=data_path,
         endpoint=os.getenv("KNOWLEDGE_BASE_ENDPOINT") or None,
         api_key=os.getenv("KNOWLEDGE_BASE_API_KEY", ""),
         top_k=top_k,

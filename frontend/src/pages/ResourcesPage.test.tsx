@@ -1,8 +1,11 @@
+import 'fake-indexeddb/auto'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import ResourcesPage from './ResourcesPage'
+import { ProfileProvider } from '@/profile/ProfileContext'
+import { createIndexedDbProfileStore } from '@/profile/profileStore'
 
 function LocationProbe() {
   const location = useLocation()
@@ -10,13 +13,16 @@ function LocationProbe() {
 }
 
 function renderPage(path = '/resources') {
+  const store = createIndexedDbProfileStore({ databaseName: `resources-${crypto.randomUUID()}` })
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/resources" element={<ResourcesPage />} />
-      </Routes>
-      <LocationProbe />
-    </MemoryRouter>,
+    <ProfileProvider store={store}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/resources" element={<ResourcesPage />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    </ProfileProvider>,
   )
 }
 
@@ -46,6 +52,17 @@ describe('ResourcesPage', () => {
     await user.click(within(emptyState).getByRole('button', { name: '清除筛选' }))
     expect(screen.getByRole('searchbox', { name: '搜索资源' })).toHaveValue('')
     expect((await screen.findAllByRole('link', { name: /打开官方页面/ })).length).toBeGreaterThan(0)
+  })
+
+  it('keeps resource queries in reusable local search history', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText(/条结果/)
+
+    await user.type(screen.getByRole('searchbox', { name: '搜索资源' }), '图书馆预约')
+    await user.click(screen.getByRole('button', { name: /^搜索$/ }))
+
+    expect(await screen.findByRole('region', { name: '最近搜索' })).toHaveTextContent('图书馆预约')
   })
 
   it('offers a mobile filter drawer control', async () => {
