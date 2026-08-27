@@ -5,6 +5,9 @@ test-results/
 playwright-report/
 .vite-server*.log
 *.local
+.superpowers/
+diagram/
+output/
 public/brand/campus-hero.jpg
 public/brand/official-mark.zip
 public/brand/official-mark/

@@ -15,6 +15,8 @@ describe('requestAssistant', () => {
     expect(response.reply).toContain('竞赛')
     expect(response.status).toBe('results')
     expect(response.resources.length).toBeGreaterThan(0)
+    expect(response.resources[0].url).toMatch(/^https?:\/\//)
+    expect(response.resources[0].source).not.toBe('')
     expect(response.clues).toContain('竞赛与实践')
   })
 
@@ -44,7 +46,8 @@ describe('requestAssistant', () => {
       body: JSON.stringify({ query: request.message, top_k: 5, category: null, session_id: undefined }),
     }))
     expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/resources/full-catalog-1295', expect.any(Object))
-    expect(response.resources[0].path).toBe('/resources/full-catalog-1295')
+    expect(response.resources[0].url).toBe('https://full.ustc.edu.cn/resource')
+    expect(response.resources[0].source).toBeTruthy()
     expect(response.sessionId).toBe('s-1')
   })
 

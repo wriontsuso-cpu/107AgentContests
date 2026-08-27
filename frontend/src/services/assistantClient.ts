@@ -20,7 +20,8 @@ export interface AssistantResource {
   title: string
   summary: string
   category: string
-  path: string
+  source: string
+  url: string
 }
 
 export interface AssistantResponse {
@@ -54,13 +55,25 @@ function inferCategory(message: string): ResourceCategoryId | undefined {
   return rules.find(([pattern]) => pattern.test(message))?.[1]
 }
 
-function toAssistantResource(resource: Resource): AssistantResource {
+function isWebUrl(value: string | undefined): value is string {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function toAssistantResource(resource: Resource): AssistantResource | undefined {
+  if (!isWebUrl(resource.url)) return undefined
   return {
     id: resource.id,
     title: resource.title,
     summary: resource.summary,
     category: getCategory(resource.category).label,
-    path: `/resources/${resource.id}`,
+    source: resource.source.authority || resource.source.label,
+    url: resource.url,
   }
 }
 
@@ -71,7 +84,10 @@ async function localDemo(request: AssistantRequest): Promise<AssistantResponse> 
   const categoryInfo = category ? getCategory(category) : undefined
   const matched = searchResources(localResources, { query: conversation, category })
   const fallback = category ? localResources.filter((resource) => resource.category === category) : localResources
-  const recommendations = (matched.length > 0 ? matched : fallback).slice(0, 3).map(toAssistantResource)
+  const recommendations = (matched.length > 0 ? matched : fallback)
+    .map(toAssistantResource)
+    .filter((item): item is AssistantResource => Boolean(item))
+    .slice(0, 3)
 
   if (!categoryInfo) {
     return {
@@ -134,14 +150,20 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
     ))
   if (!match) return undefined
   const id = asText(match.id) || explicitId
-  if (!id) return undefined
+  const verifiedUrl = asText(match.url)
+  if (!id || !isWebUrl(verifiedUrl)) return undefined
   const category = getCategory(resolveCategory(asText(match.category), asText(match.category_id), asText(match.category_name))).label
+  const sourceValue = match.source
+  const source = sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)
+    ? asText((sourceValue as RemoteResult).authority) || asText((sourceValue as RemoteResult).label)
+    : asText(sourceValue) || asText(match.authority) || '中国科学技术大学'
   return {
     id,
     title: asText(match.title) || candidateTitle,
     summary: asText(match.summary) || '暂无简介，请查看资源详情。',
     category,
-    path: `/resources/${encodeURIComponent(id)}`,
+    source,
+    url: verifiedUrl,
   }
 }
 

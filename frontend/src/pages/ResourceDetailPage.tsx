@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react'
 import PageTransition from '@/components/PageTransition'
 import RelatedResources from '@/components/resources/RelatedResources'
 import ResourceMetadata from '@/components/resources/ResourceMetadata'
+import CanvasPage from '@/components/visual/CanvasPage'
+import GlassPanel from '@/components/visual/GlassPanel'
 import { getCategory } from '@/domain/categories'
 import type { Resource } from '@/domain/resource'
 import { getResourceById } from '@/services/resourceClient'
+import { detailPhotography } from '@/data/pagePhotography'
 
 export default function ResourceDetailPage() {
   const { id = '' } = useParams()
@@ -47,8 +50,9 @@ export default function ResourceDetailPage() {
 
   return (
     <PageTransition>
-      <article className="detail-page">
-        <header className="detail-hero">
+      <CanvasPage src={detailPhotography[category.id]} alt={`${category.label}校园背景`} loading="lazy" className="detail-canvas">
+      <article className="detail-page detail-page--canvas">
+        <GlassPanel tone="navy" as="header" className="detail-hero">
           <div className="shell-width">
             <nav className="detail-breadcrumb" aria-label="面包屑">
               <Link to="/resources">资源大厅</Link>
@@ -68,9 +72,9 @@ export default function ResourceDetailPage() {
               </a>}
             </div>
           </div>
-        </header>
+        </GlassPanel>
         <div className="detail-content shell-width">
-          <div className="detail-main">
+          <GlassPanel tone="warm" className="detail-main">
             <section aria-labelledby="detail-about">
               <span className="eyebrow">ABOUT THIS RESOURCE</span>
               <h2 id="detail-about">资源说明</h2>
@@ -90,14 +94,15 @@ export default function ResourceDetailPage() {
                 {resource.tags.map((tag) => <span key={tag}>{tag}</span>)}
               </div>
             )}
-          </div>
-          <aside className="detail-aside">
+          </GlassPanel>
+          <GlassPanel tone="warm" as="aside" className="detail-aside">
             <ResourceMetadata resource={resource} />
             <p>资源内容与办理规则可能变化，请以原发布单位页面为准。</p>
-          </aside>
+          </GlassPanel>
         </div>
-        <RelatedResources current={resource} />
+        <GlassPanel tone="warm" className="detail-related-glass"><RelatedResources current={resource} /></GlassPanel>
       </article>
+      </CanvasPage>
     </PageTransition>
   )
 }

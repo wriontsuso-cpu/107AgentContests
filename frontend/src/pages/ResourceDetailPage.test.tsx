@@ -25,7 +25,10 @@ describe('ResourceDetailPage', () => {
     expect(screen.getAllByText(resource.source.label).length).toBeGreaterThan(0)
     expect(screen.getByText(resource.source.authority)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '前往资源原页面' })).toHaveAttribute('href', resource.url)
+    expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByRole('heading', { name: resource.title }))
+    expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByRole('link', { name: '前往资源原页面' }))
     expect(screen.getByRole('link', { name: '前往资源原页面' })).toHaveAttribute('rel', expect.stringContaining('noreferrer'))
+    expect(screen.getByRole('img', { name: `${getCategory(resource.category).label}校园背景` })).toHaveAttribute('loading', 'lazy')
   })
 
   it('shows related resources without repeating the current item', async () => {

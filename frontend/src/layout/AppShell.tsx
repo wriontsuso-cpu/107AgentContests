@@ -1,7 +1,8 @@
-import { Menu, Sparkles, X } from 'lucide-react'
+import { Menu, Sparkles, UserRound, X } from 'lucide-react'
 import { type PropsWithChildren, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import BrandMark from '@/components/BrandMark'
+import { useProfile } from '@/profile/ProfileContext'
 
 const navigation = [
   { to: '/', label: '首页', end: true },
@@ -11,6 +12,7 @@ const navigation = [
 
 export default function AppShell({ children }: PropsWithChildren) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { activeProfile } = useProfile()
 
   return (
     <div className="app-shell">
@@ -33,6 +35,10 @@ export default function AppShell({ children }: PropsWithChildren) {
             <NavLink className="site-nav__assistant" to="/assistant" onClick={() => setMenuOpen(false)}>
               <Sparkles size={16} aria-hidden="true" />
               帮我找资源
+            </NavLink>
+            <NavLink className="site-nav__profile" to="/profile" onClick={() => setMenuOpen(false)}>
+              <UserRound size={16} aria-hidden="true" />
+              {activeProfile?.nickname ?? '创建档案'}
             </NavLink>
           </nav>
           <button

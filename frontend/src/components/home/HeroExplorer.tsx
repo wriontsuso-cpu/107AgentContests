@@ -14,45 +14,34 @@ export default function HeroExplorer() {
   }
 
   return (
-    <section className="hero" aria-labelledby="hero-title">
-      <img className="hero__image" src="/brand/campus-hero.webp" alt="雪后的中国科学技术大学校园与勤奋学习红专并进石碑" />
-      <div className="hero__veil" />
-      <div className="hero__route" aria-hidden="true">
-        <span className="hero__route-line" />
-        <i className="hero__node hero__node--one" />
-        <i className="hero__node hero__node--two" />
-        <i className="hero__node hero__node--three" />
+    <section className="home-snow-hero shell-width" aria-labelledby="hero-title">
+      <div className="photo-entry__copy">
+        <span className="photo-entry__eyebrow">USTC CAMPUS GUIDE · 校园生活指南</span>
+        <h1 id="hero-title" aria-label="今天，想在科大做点什么？">今天，想在科大<br aria-hidden="true" />做点什么？</h1>
       </div>
-      <div className="hero__content shell-width">
-        <div className="hero__copy">
-          <span className="hero__eyebrow">USTC CAMPUS RESOURCE ATLAS · 2026</span>
-          <h1 id="hero-title">从一个需要，<br />抵达一处资源。</h1>
-          <p>不必先知道部门名称。说出你想做什么，我们帮你找到科大校园里真正可用的入口。</p>
-        </div>
-        <div className="hero__actions">
-          <form className="hero-search" role="search" onSubmit={handleSubmit}>
-            <Search size={20} aria-hidden="true" />
-            <input
-              type="search"
-              value={query}
-              aria-label="搜索校园资源"
-              placeholder="试试“图书馆预约”或“参加科创竞赛”"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <button type="submit" aria-label="搜索">
-              <ArrowRight size={20} aria-hidden="true" />
-            </button>
-          </form>
-          <div className="hero__under-search">
-            <span>已整理 {totalResourceCount.toLocaleString('zh-CN')} 条校园资源</span>
-            <Link to="/assistant">
-              <Sparkles size={15} aria-hidden="true" />
-              让 AI 帮我梳理
-            </Link>
-          </div>
+      <div className="photo-entry__actions">
+        <form className="hero-search" role="search" onSubmit={handleSubmit}>
+          <Search size={20} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            aria-label="搜索校园资源"
+            placeholder="试试“图书馆预约”或“参加科创竞赛”"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button type="submit" aria-label="搜索">
+            <ArrowRight size={20} aria-hidden="true" />
+          </button>
+        </form>
+        <div className="hero__under-search">
+          <span>已整理 {totalResourceCount.toLocaleString('zh-CN')} 条校园资源</span>
+          <Link to="/assistant">
+            <Sparkles size={15} aria-hidden="true" />
+            让 AI 帮我梳理
+          </Link>
         </div>
       </div>
-      <div className="hero__caption">东校区 · 校园风光 / 官方影像</div>
+      <p className="home-snow-hero__caption">雪后石碑 · 中国科大官方校园影像</p>
     </section>
   )
 }

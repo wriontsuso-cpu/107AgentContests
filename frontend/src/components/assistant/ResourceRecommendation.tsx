@@ -1,14 +1,14 @@
 import { ArrowUpRight } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import type { AssistantResource } from '@/services/assistantClient'
 
 export default function ResourceRecommendation({ resource }: { resource: AssistantResource }) {
   return (
-    <Link className="assistant-resource" to={resource.path}>
+    <a className="assistant-resource" href={resource.url} target="_blank" rel="noopener noreferrer">
       <span>{resource.category}</span>
       <strong>{resource.title}</strong>
       <p>{resource.summary}</p>
+      <small>{resource.source}</small>
       <ArrowUpRight size={17} aria-hidden="true" />
-    </Link>
+    </a>
   )
 }
