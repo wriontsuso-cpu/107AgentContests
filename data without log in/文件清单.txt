@@ -1,16 +1,18 @@
-整合去重结果（data without log in 发布镜像 · 2026-08-28 并入 member-A）
+整合去重结果（data without log in 发布镜像 · 2026-08-28 数据库整理助手 v2）
 
-- 条目总数：13188
+- 条目总数：12882
 - 覆盖栏目：39
-- 组成：curated 63 + crawled 732 + crawl 12393
-- 去重：URL 规范化 0 组；member-A 线下文档/精选内容已收录未重复并入
-- 脱敏：sanitized=true，PII 8 类复扫 0 命中，URL 长数字残留 0
+- 组成：curated 63 + crawled 651 + crawl 12168
+- 去重：URL 规范化 0 重复组；标题指纹+相似度自动合并 306 组（-306）；年份冲突/近重复 4694 对待复核（保持独立）
+- 三性：全库 info_status/expired/freshness + disposition（keep 3849/flag 6449/deprecate 2584）；有效性抽样 120 条 reachable
+- 脱敏：sanitized=true，PII 8 类 dry-run 0、写回复扫 0；file:// 本地路径 24 条已中性化
 
 主库：
-  原始数据_整合_search_text.json（13188 条）
-  原始数据_整合.json（无 search_text，13188 条）
+  原始数据_整合_search_text.json（12882 条）
+  原始数据_整合.json（无 search_text，12882 条）
 
 文档：文档/00_总览与使用说明.md、01_按栏目索引.md、02_全量清单.md、按栏目/（39 册）
 表格：表格/整合去重_全量.csv、整合去重_全量.xlsx
 PDF：PDF/整合去重_汇总.pdf
 规范：数据接口规范.md（仓库根/工作区根/crawler 三处同步）
+运行产物：运行/数据库整理助手_20260828_v2/（去重 12_/三性 14_15_/脱敏 16_17_/质检 20_）
