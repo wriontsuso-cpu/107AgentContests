@@ -27,6 +27,7 @@ describe('ResourcesPage', () => {
     expect(screen.getByRole('heading', { name: '要找的入口，从这里出发。' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: '夕阳下的大学校园草坪与远景学生' })).toHaveAttribute('src', '/brand/home-campus-life-wide.webp')
     expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByRole('searchbox', { name: '搜索资源' }))
+    expect(screen.getByRole('searchbox', { name: '搜索资源' })).toHaveAttribute('placeholder', '搜索资源名称、用途或发布单位')
     expect(screen.queryByText(/把分散的入口/)).not.toBeInTheDocument()
   })
 

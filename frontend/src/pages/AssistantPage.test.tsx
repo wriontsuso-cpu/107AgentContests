@@ -4,12 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { AssistantClient } from '@/services/assistantClient'
 import AssistantPage from './AssistantPage'
-import { ProfileProvider } from '@/profile/ProfileContext'
-import { createIndexedDbProfileStore } from '@/profile/profileStore'
-import type { ProfileStore } from '@/profile/types'
+import { AccountProvider } from '@/profile/AccountContext'
+import { createIndexedDbAccountStore } from '@/profile/profileStore'
+import type { AccountStore } from '@/profile/types'
 
-function renderPage(client?: AssistantClient, store: ProfileStore = createIndexedDbProfileStore({ databaseName: `assistant-${crypto.randomUUID()}` })) {
-  return render(<MemoryRouter><ProfileProvider store={store}><AssistantPage client={client} /></ProfileProvider></MemoryRouter>)
+function renderPage(client?: AssistantClient, store: AccountStore = createIndexedDbAccountStore({ databaseName: `assistant-${crypto.randomUUID()}` })) {
+  return render(<MemoryRouter><AccountProvider store={store}><AssistantPage client={client} /></AccountProvider></MemoryRouter>)
 }
 
 describe('AssistantPage', () => {
@@ -26,11 +26,11 @@ describe('AssistantPage', () => {
     expect(await screen.findByText('访客模式 · 对话不会保存')).toBeInTheDocument()
   })
 
-  it('saves an unlocked profile conversation and exposes it in recent history', async () => {
+  it('saves a signed-in account conversation and presents my messages on the right', async () => {
     const user = userEvent.setup()
-    const store = createIndexedDbProfileStore({ databaseName: `assistant-saved-${crypto.randomUUID()}` })
-    const profile = await store.createProfile('陈泰然', '3456')
-    sessionStorage.setItem('ustc-navigator-active-profile', profile.id)
+    const store = createIndexedDbAccountStore({ databaseName: `assistant-saved-${crypto.randomUUID()}` })
+    const account = await store.createAccount('陈泰然', 'password-3456', 'data:image/webp;base64,avatar')
+    sessionStorage.setItem('ustc-navigator-active-account', account.id)
     const client = vi.fn().mockResolvedValue({
       status: 'results', reply: '这里是校医院入口。', clarifications: [], clues: ['校医院'], resources: [],
     }) as AssistantClient
@@ -41,7 +41,11 @@ describe('AssistantPage', () => {
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
     expect(await screen.findByRole('button', { name: /查询校医院/ })).toBeInTheDocument()
-    expect((await store.listConversations(profile.id))[0]?.messages).toHaveLength(3)
+    const userMessage = screen.getAllByText('查询校医院').find((element) => element.closest('article'))?.closest('article')
+    expect(userMessage).toHaveClass('message--user')
+    expect(userMessage).toHaveTextContent('我')
+    expect(userMessage).toContainElement(screen.getByRole('img', { name: '陈泰然的头像' }))
+    expect((await store.listConversations(account.id))[0]?.messages).toHaveLength(3)
   })
 
   it('submits a need and renders clarification plus recommendations', async () => {

@@ -3,80 +3,105 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ProfileProvider } from '@/profile/ProfileContext'
-import { createIndexedDbProfileStore } from '@/profile/profileStore'
+import { AccountProvider } from '@/profile/AccountContext'
+import { createIndexedDbAccountStore } from '@/profile/profileStore'
 import ProfilePage from './ProfilePage'
 
 function renderPage() {
-  const store = createIndexedDbProfileStore({ databaseName: `profile-page-${crypto.randomUUID()}` })
-  return render(<MemoryRouter><ProfileProvider store={store}><ProfilePage /></ProfileProvider></MemoryRouter>)
+  const store = createIndexedDbAccountStore({ databaseName: `profile-page-${crypto.randomUUID()}` })
+  return { store, ...render(<MemoryRouter><AccountProvider store={store}><ProfilePage /></AccountProvider></MemoryRouter>) }
+}
+
+async function register(user: ReturnType<typeof userEvent.setup>, username: string, password = 'password-123') {
+  await user.type(screen.getByLabelText('用户名'), username)
+  await user.type(screen.getByLabelText('设置密码'), password)
+  await user.type(screen.getByLabelText('确认密码'), password)
+  await user.click(screen.getByRole('button', { name: '注册并登录' }))
+}
+
+function createLegacyDatabase(databaseName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName, 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore('profiles', { keyPath: 'id' }).add({ id: 'legacy', nickname: '旧档案' })
+      request.result.createObjectStore('conversations', { keyPath: 'id' })
+    }
+    request.onsuccess = () => { request.result.close(); resolve() }
+    request.onerror = () => reject(request.error)
+  })
 }
 
 describe('ProfilePage', () => {
   beforeEach(() => sessionStorage.clear())
   afterEach(() => vi.restoreAllMocks())
 
-  it('falls back to guest mode when both profile storage and session storage are blocked', async () => {
-    const store = createIndexedDbProfileStore({ databaseName: `profile-page-${crypto.randomUUID()}` })
-    vi.spyOn(store, 'listProfiles').mockRejectedValue(new Error('blocked'))
+  it('falls back to guest mode when both account storage and session storage are blocked', async () => {
+    const store = createIndexedDbAccountStore({ databaseName: `profile-page-${crypto.randomUUID()}` })
+    vi.spyOn(store, 'listAccounts').mockRejectedValue(new Error('blocked'))
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked') })
 
-    render(<MemoryRouter><ProfileProvider store={store}><ProfilePage /></ProfileProvider></MemoryRouter>)
+    render(<MemoryRouter><AccountProvider store={store}><ProfilePage /></AccountProvider></MemoryRouter>)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('已回退为访客模式')
   })
 
-  it('creates a local profile and explains the storage boundary', async () => {
+  it('registers a local account with password and an optional avatar field', async () => {
     const user = userEvent.setup()
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: '本机档案，只属于这台浏览器。' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '明亮的林荫校园步道' })).toHaveAttribute('src', '/brand/profile-walkway.webp')
-    expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByLabelText('昵称'))
-    expect(screen.getByText(/不能跨设备同步/)).toBeInTheDocument()
-    await user.type(screen.getByLabelText('昵称'), '余伊健')
-    await user.type(screen.getByLabelText('设置 PIN'), '1234')
-    await user.type(screen.getByLabelText('确认 PIN'), '1234')
-    await user.click(screen.getByRole('button', { name: '创建并进入' }))
+    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
+    expect(screen.getByText('账号与对话仅保存到当前浏览器。')).toBeInTheDocument()
+    expect(screen.getByLabelText('上传头像（可选）')).toHaveAttribute('type', 'file')
+    await register(user, '余伊健')
 
-    expect(await screen.findByRole('heading', { name: '你好，余伊健。' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '你好，余伊健' })).toBeInTheDocument()
     expect(screen.getByText('最近保存 0 / 5 次会话')).toBeInTheDocument()
   })
 
-  it('locks the profile and rejects an incorrect PIN before unlocking', async () => {
+  it('logs out and uses a generic error before accepting valid credentials', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: '本机档案，只属于这台浏览器。' })
-    await user.type(screen.getByLabelText('昵称'), '朱荣骐')
-    await user.type(screen.getByLabelText('设置 PIN'), '2345')
-    await user.type(screen.getByLabelText('确认 PIN'), '2345')
-    await user.click(screen.getByRole('button', { name: '创建并进入' }))
-    await screen.findByRole('heading', { name: '你好，朱荣骐。' })
+    await screen.findByRole('heading', { name: '注册本机账号' })
+    await register(user, '朱荣骐')
+    await screen.findByRole('heading', { name: '你好，朱荣骐' })
 
-    await user.click(screen.getByRole('button', { name: '锁定档案' }))
-    expect(await screen.findByRole('heading', { name: '解锁本机档案' })).toBeInTheDocument()
-    await user.type(screen.getByLabelText('输入 PIN'), '9999')
-    await user.click(screen.getByRole('button', { name: '解锁' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('PIN 不正确')
+    await user.click(screen.getByRole('button', { name: '退出登录' }))
+    expect(await screen.findByRole('heading', { name: '登录本机账号' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('用户名'), '朱荣骐')
+    await user.type(screen.getByLabelText('密码'), 'wrong-password')
+    await user.click(screen.getByRole('button', { name: '登录' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('用户名或密码不正确')
 
-    await user.clear(screen.getByLabelText('输入 PIN'))
-    await user.type(screen.getByLabelText('输入 PIN'), '2345')
-    await user.click(screen.getByRole('button', { name: '解锁' }))
-    expect(await screen.findByRole('heading', { name: '你好，朱荣骐。' })).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('密码'))
+    await user.type(screen.getByLabelText('密码'), 'password-123')
+    await user.click(screen.getByRole('button', { name: '登录' }))
+    expect(await screen.findByRole('heading', { name: '你好，朱荣骐' })).toBeInTheDocument()
   })
 
-  it('requires confirmation before permanently deleting a profile', async () => {
+  it('deletes a forgotten-password account only after confirmation', async () => {
     const user = userEvent.setup()
-    renderPage()
-    await screen.findByRole('heading', { name: '本机档案，只属于这台浏览器。' })
-    await user.type(screen.getByLabelText('昵称'), '赵世斌')
-    await user.type(screen.getByLabelText('设置 PIN'), '4567')
-    await user.type(screen.getByLabelText('确认 PIN'), '4567')
-    await user.click(screen.getByRole('button', { name: '创建并进入' }))
+    const { store } = renderPage()
+    await screen.findByRole('heading', { name: '注册本机账号' })
+    await register(user, '赵世斌')
+    await user.click(await screen.findByRole('button', { name: '退出登录' }))
 
-    await user.click(await screen.findByRole('button', { name: '删除档案' }))
-    expect(screen.getByText(/档案和其中的会话将永久删除/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '确认永久删除' }))
-    expect(await screen.findByRole('heading', { name: '本机档案，只属于这台浏览器。' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('用户名'), '赵世斌')
+    await user.click(screen.getByRole('button', { name: '忘记密码' }))
+    expect(screen.getByText(/只能删除这个本机账号后重新注册/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '删除账号并重新注册' }))
+
+    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
+    expect(await store.listAccounts()).toEqual([])
+  })
+
+  it('shows a one-time notice after clearing legacy PIN profiles', async () => {
+    const databaseName = `profile-page-legacy-${crypto.randomUUID()}`
+    await createLegacyDatabase(databaseName)
+    const store = createIndexedDbAccountStore({ databaseName })
+
+    render(<MemoryRouter><AccountProvider store={store}><ProfilePage /></AccountProvider></MemoryRouter>)
+
+    expect(await screen.findByRole('status')).toHaveTextContent('本机账号功能已升级，请重新注册')
+    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
   })
 })

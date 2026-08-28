@@ -1,4 +1,6 @@
 import { Bot, UserRound } from 'lucide-react'
+import AccountAvatar from '@/components/account/AccountAvatar'
+import type { LocalAccount } from '@/profile/types'
 import type { AssistantResponse } from '@/services/assistantClient'
 import NeedClarifier from './NeedClarifier'
 import ResourceRecommendation from './ResourceRecommendation'
@@ -11,6 +13,7 @@ export interface ConversationMessage {
 }
 
 interface ConversationProps {
+  account?: LocalAccount | null
   messages: ConversationMessage[]
   loading: boolean
   error?: string
@@ -18,16 +21,16 @@ interface ConversationProps {
   onRetry: () => void
 }
 
-export default function Conversation({ messages, loading, error, onClarify, onRetry }: ConversationProps) {
+export default function Conversation({ account, messages, loading, error, onClarify, onRetry }: ConversationProps) {
   return (
     <div className="conversation" aria-live="polite">
       {messages.map((message) => (
         <article key={message.id} className={`message message--${message.role}`}>
-          <div className="message__avatar" aria-hidden="true">
-            {message.role === 'assistant' ? <Bot size={18} /> : <UserRound size={18} />}
+          <div className="message__avatar" aria-hidden={message.role === 'assistant' || !account ? 'true' : undefined}>
+            {message.role === 'assistant' ? <Bot size={18} /> : account ? <AccountAvatar account={account} /> : <UserRound size={18} />}
           </div>
           <div className="message__body">
-            <span>{message.role === 'assistant' ? '导航助手' : '你'}</span>
+            <span>{message.role === 'assistant' ? '导航助手' : '我'}</span>
             <p>{message.content}</p>
             {message.response && (
               <>

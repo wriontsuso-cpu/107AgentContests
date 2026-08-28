@@ -181,6 +181,16 @@ textarea {
   padding: 0 18px;
   color: white;
   background: var(--deep-blue);
+  box-shadow: 0 9px 24px rgba(3, 18, 43, 0.18);
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.site-nav__assistant:hover,
+.site-nav__assistant--active {
+  color: white;
+  background: #132f55;
+  box-shadow: 0 12px 28px rgba(3, 18, 43, 0.26);
+  transform: translateY(-1px);
 }
 
 .menu-button {
@@ -1062,7 +1072,7 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 285px;
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
   margin-top: 64px;
 }
 
@@ -1137,6 +1147,7 @@ textarea {
 }
 
 .message--user {
+  grid-template-columns: minmax(0, 1fr) 34px;
   padding-left: 12%;
 }
 
@@ -1151,8 +1162,17 @@ textarea {
 }
 
 .message--user .message__avatar {
+  grid-column: 2;
+  grid-row: 1;
   color: white;
   background: var(--deep-blue);
+}
+
+.message--user .message__body {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  text-align: right;
 }
 
 .message__body > span {
@@ -1172,7 +1192,7 @@ textarea {
 .message--user .message__body > p {
   display: inline-block;
   padding: 12px 15px;
-  border-radius: 4px 12px 12px 12px;
+  border-radius: 12px 4px 12px 12px;
   color: white;
   background: var(--deep-blue);
 }
@@ -1556,6 +1576,7 @@ textarea {
 }
 
 .resource-search input {
+  width: 100%;
   min-width: 0;
   border: 0;
   outline: 0;
@@ -2318,6 +2339,9 @@ textarea {
 
 .profile-alert--error { color: #8b3232; background: #fff0ee; }
 .profile-dashboard { display: grid; gap: 22px; }
+.profile-account-summary { display: flex; align-items: center; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.profile-account-summary strong { font-family: var(--serif); font-size: 28px; }
+.profile-account-summary p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .profile-status-card { display: flex; align-items: center; gap: 16px; }
 .profile-status-card > svg { width: 46px; height: 46px; color: var(--ustc-blue); }
 .profile-status-card strong { font-family: var(--serif); font-size: 25px; }
@@ -2345,6 +2369,25 @@ textarea {
   font-size: 14px;
 }
 
+.profile-auth-card { display: grid; gap: 26px; }
+.profile-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; border-radius: 14px; background: rgba(10, 34, 67, .08); }
+.profile-auth-tabs button { min-height: 42px; border: 0; border-radius: 10px; color: var(--muted); background: transparent; font: inherit; font-weight: 680; cursor: pointer; }
+.profile-auth-tabs button[aria-selected='true'] { color: var(--deep-blue); background: rgba(255, 255, 255, .86); box-shadow: 0 5px 18px rgba(5, 27, 58, .08); }
+.profile-avatar-picker { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px; border: 1px dashed rgba(20, 35, 59, .2); border-radius: 14px; background: rgba(255, 255, 255, .35); }
+.profile-avatar-picker > img,
+.profile-avatar-picker > span { display: grid; width: 74px; height: 74px; grid-row: 1 / span 2; place-items: center; overflow: hidden; border-radius: 50%; color: var(--ustc-blue); background: rgba(255, 255, 255, .72); object-fit: cover; }
+.profile-avatar-picker label { gap: 5px; }
+.profile-avatar-picker input { min-height: auto; padding: 0; border: 0; background: transparent; font-size: 11px; }
+.profile-avatar-picker button,
+.profile-forgot-button,
+.profile-confirmation-close { border: 0; color: var(--ustc-blue); background: transparent; cursor: pointer; }
+.profile-avatar-picker small { grid-column: 2 / -1; color: var(--muted); }
+.profile-forgot-button { justify-self: center; font-size: 12px; }
+.profile-delete-confirmation { position: relative; }
+.profile-confirmation-close { position: absolute; top: 10px; right: 10px; }
+.account-avatar { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.account-avatar--fallback { display: grid; place-items: center; color: white; background: linear-gradient(145deg, #275c91, #0b264b); font-weight: 750; }
+
 /* Profile navigation */
 .site-nav__profile {
   display: inline-flex;
@@ -2359,15 +2402,20 @@ textarea {
   font-size: 11px;
 }
 
+.site-nav__avatar { width: 24px; height: 24px; flex: 0 0 24px; font-size: 10px; }
+.profile-account-summary > .account-avatar { width: 64px; height: 64px; flex: 0 0 64px; font-size: 22px; }
+
 /* Assistant history */
 .assistant-side {
-  position: sticky;
-  top: 98px;
+  position: static;
   display: grid;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
 }
 
-.assistant-side .need-board { position: relative; top: auto; }
+.assistant-side .need-board,
+.assistant-side .conversation-history { position: relative; min-height: 0; overflow: auto; top: auto; }
 .assistant-side__close,
 .assistant-history-toggle { display: none !important; }
 .assistant-chat__toolbar > div { display: flex; align-items: center; gap: 8px; }

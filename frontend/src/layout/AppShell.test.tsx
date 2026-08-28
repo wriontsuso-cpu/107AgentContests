@@ -3,17 +3,17 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import AppShell from './AppShell'
-import { ProfileProvider } from '@/profile/ProfileContext'
-import { createIndexedDbProfileStore } from '@/profile/profileStore'
+import { AccountProvider } from '@/profile/AccountContext'
+import { createIndexedDbAccountStore } from '@/profile/profileStore'
 
 function renderShell(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <ProfileProvider store={createIndexedDbProfileStore({ databaseName: `shell-${crypto.randomUUID()}` })}>
+      <AccountProvider store={createIndexedDbAccountStore({ databaseName: `shell-${crypto.randomUUID()}` })}>
         <AppShell>
           <div>页面内容</div>
         </AppShell>
-      </ProfileProvider>
+      </AccountProvider>
     </MemoryRouter>,
   )
 }
@@ -25,8 +25,9 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#main-content')
     expect(screen.getByRole('link', { name: '首页' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '资源大厅' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'AI 导航' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '创建档案' })).toHaveAttribute('href', '/profile')
+    expect(screen.getAllByRole('link', { name: 'AI 导航' })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'AI 导航' })).toHaveClass('site-nav__assistant')
+    expect(screen.getByRole('link', { name: '登录 / 注册' })).toHaveAttribute('href', '/profile')
     expect(screen.getByRole('button', { name: '打开导航菜单' })).toBeInTheDocument()
   })
 
@@ -37,9 +38,10 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '首页' })).not.toHaveAttribute('aria-current')
   })
 
-  it('discloses that this is a student competition project', () => {
+  it('keeps the source disclaimer without the competition-system label', () => {
     renderShell()
 
-    expect(screen.getByText('学生参赛项目 · 非正式校务系统')).toBeInTheDocument()
+    expect(screen.queryByText('学生参赛项目 · 非正式校务系统')).not.toBeInTheDocument()
+    expect(screen.getByText('资源信息以原发布单位页面为准')).toBeInTheDocument()
   })
 })

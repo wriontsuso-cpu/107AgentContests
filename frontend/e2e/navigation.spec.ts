@@ -2,9 +2,13 @@ import { expect, test } from '@playwright/test'
 
 test('homepage stays focused on the product and team story', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '在科大，找入口不必绕远路。' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '我们是，啊对对队。' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '在科大，找入口不必绕远路' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '我们是，啊对对队' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '近期常用入口' })).toHaveCount(0)
+  await expect(page.getByText(/摄影来源/)).toHaveCount(0)
+  await expect(page.getByText(/学生参赛项目/)).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'AI 导航' })).toHaveCount(1)
+  await expect(page.getByRole('link', { name: '帮我找资源' })).toHaveCount(0)
 })
 
 test('homepage search enters the resource directory', async ({ page }) => {
@@ -25,7 +29,7 @@ test('mobile navigation exposes all primary destinations', async ({ page, isMobi
 
   await expect(page.getByRole('link', { name: '资源大厅' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'AI 导航' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '创建档案' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '登录 / 注册' })).toBeVisible()
 })
 
 test('resource cards open verified official destinations', async ({ page }) => {
@@ -36,17 +40,45 @@ test('resource cards open verified official destinations', async ({ page }) => {
   await expect(officialLink).toHaveAttribute('href', /^https?:\/\//)
 })
 
-test('a local profile can be created, locked and unlocked', async ({ page }) => {
+test('a local account can be registered, signed out and signed in', async ({ page }) => {
   await page.goto('/profile')
-  await page.getByLabel('昵称').fill('端到端测试')
-  await page.getByLabel('设置 PIN').fill('2468')
-  await page.getByLabel('确认 PIN').fill('2468')
-  await page.getByRole('button', { name: '创建并进入' }).click()
-  await expect(page.getByRole('heading', { name: '你好，端到端测试。' })).toBeVisible()
-  await page.getByRole('button', { name: '锁定档案' }).click()
-  await page.getByLabel('输入 PIN').fill('2468')
-  await page.getByRole('button', { name: '解锁' }).click()
-  await expect(page.getByRole('heading', { name: '你好，端到端测试。' })).toBeVisible()
+  await page.getByLabel('用户名').fill('端到端测试')
+  await page.getByLabel('设置密码').fill('strong password 2468')
+  await page.getByLabel('确认密码').fill('strong password 2468')
+  await page.getByRole('button', { name: '注册并登录' }).click()
+  await expect(page.getByRole('heading', { name: '你好，端到端测试' })).toBeVisible()
+  await page.getByRole('button', { name: '退出登录' }).click()
+  await page.getByLabel('用户名').fill('端到端测试')
+  await page.getByLabel('密码').fill('strong password 2468')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '你好，端到端测试' })).toBeVisible()
+})
+
+for (const width of [1280, 1440, 1920]) {
+  test(`homepage keeps intentional headline lines at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.goto('/')
+    const lines = page.getByTestId('headline-line')
+    await expect(lines).toHaveCount(4)
+    for (const line of await lines.all()) {
+      await expect(line).toHaveCSS('white-space', 'nowrap')
+    }
+    await expect(page.locator('.home-snow-story__team')).toHaveCSS('text-align', 'left')
+  })
+}
+
+test('resource search placeholder has enough room to remain readable', async ({ page }) => {
+  await page.goto('/resources')
+  const search = page.getByRole('searchbox', { name: '搜索资源' })
+  await expect(search).toHaveAttribute('placeholder', '搜索资源名称、用途或发布单位')
+  const fit = await search.evaluate((input) => {
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')!
+    const style = getComputedStyle(input)
+    context.font = style.font
+    return input.getBoundingClientRect().width >= context.measureText(input.placeholder).width + 12
+  })
+  expect(fit).toBe(true)
 })
 
 test('primary pages do not overflow the viewport', async ({ page }) => {

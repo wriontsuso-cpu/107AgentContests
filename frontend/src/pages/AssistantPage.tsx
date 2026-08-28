@@ -13,7 +13,7 @@ import {
   type AssistantClient,
   type AssistantHistoryMessage,
 } from '@/services/assistantClient'
-import { useProfile } from '@/profile/ProfileContext'
+import { useAccount } from '@/profile/AccountContext'
 import type { StoredConversation } from '@/profile/types'
 
 interface AssistantPageProps {
@@ -27,7 +27,7 @@ const openingMessage: ConversationMessage = {
 }
 
 export default function AssistantPage({ client = requestAssistant }: AssistantPageProps) {
-  const { activeProfile, conversations, storageAvailable, saveConversation, deleteConversation, pendingGuestConversation, offerGuestConversation, clearGuestConversation } = useProfile()
+  const { activeAccount, conversations, storageAvailable, saveConversation, deleteConversation, pendingGuestConversation, offerGuestConversation, clearGuestConversation } = useAccount()
   const [messages, setMessages] = useState<ConversationMessage[]>([openingMessage])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
@@ -42,7 +42,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
   )
 
   useEffect(() => {
-    if (activeProfile || !messages.some((message) => message.role === 'user')) return
+    if (activeAccount || !messages.some((message) => message.role === 'user')) return
     const now = new Date().toISOString()
     offerGuestConversation({
       id: conversationId.current,
@@ -51,7 +51,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
       createdAt: conversationCreatedAt.current,
       updatedAt: now,
     })
-  }, [activeProfile, messages, offerGuestConversation])
+  }, [activeAccount, messages, offerGuestConversation])
 
   async function keepGuestConversation() {
     if (!pendingGuestConversation) return
@@ -81,7 +81,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
       }
       const nextMessages = [...messages, userMessage, assistantMessage]
       setMessages(nextMessages)
-      if (activeProfile) {
+      if (activeAccount) {
         const now = new Date().toISOString()
         await saveConversation({
           id: conversationId.current,
@@ -130,15 +130,15 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
         <div className="assistant-workspace assistant-workspace--glass shell-width">
           <GlassPanel tone="warm" className="assistant-chat">
             <div className="assistant-chat__toolbar">
-              <div><span>需求对话</span><small>{activeProfile ? `${activeProfile.nickname} · 自动保存最近 5 次` : '访客模式 · 对话不会保存'}</small></div>
+              <div><span>需求对话</span><small>{activeAccount ? `${activeAccount.username} · 自动保存最近 5 次` : '访客模式 · 对话不会保存'}</small></div>
               <div>
                 <button className="assistant-history-toggle" type="button" onClick={() => setHistoryOpen(true)}><History size={14} />最近会话</button>
                 <button type="button" onClick={reset}><RotateCcw size={14} />重新开始</button>
               </div>
             </div>
             {!storageAvailable && <div className="assistant-storage-warning" role="status">本机存储不可用，本次对话不会保存。</div>}
-            {activeProfile && pendingGuestConversation && <div className="guest-transfer-prompt">
-              <span>发现一段刚才的访客对话，要保存到“{activeProfile.nickname}”吗？</span>
+            {activeAccount && pendingGuestConversation && <div className="guest-transfer-prompt">
+              <span>发现一段刚才的访客对话，要保存到“{activeAccount.username}”吗？</span>
               <button type="button" onClick={() => void keepGuestConversation()}>保存当前对话</button>
               <button type="button" onClick={clearGuestConversation}>暂不保存</button>
             </div>}
@@ -147,7 +147,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
                 {assistantStarterPrompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)}>{prompt}</button>)}
               </div>
             )}
-            <Conversation messages={messages} loading={loading} error={error} onClarify={sendMessage} onRetry={() => sendMessage(lastMessage)} />
+            <Conversation account={activeAccount} messages={messages} loading={loading} error={error} onClarify={sendMessage} onRetry={() => sendMessage(lastMessage)} />
             <PromptComposer onSubmit={sendMessage} disabled={loading} />
           </GlassPanel>
           <GlassPanel tone="navy" className={`assistant-side${historyOpen ? ' assistant-side--open' : ''}`}>
@@ -158,7 +158,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
               <footer>AI 结果仅用于导航，最终信息以资源原页面为准。</footer>
             </aside>
             <aside className="conversation-history" aria-label="最近会话">
-              <header><History size={17} /><div><span>最近会话</span><small>{activeProfile ? `最多保留 5 次` : '解锁档案后保存'}</small></div></header>
+              <header><History size={17} /><div><span>最近会话</span><small>{activeAccount ? '最多保留 5 次' : '登录后保存'}</small></div></header>
               {conversations.length > 0 ? <ul>{conversations.map((conversation) => <li key={conversation.id}>
                 <button type="button" onClick={() => restoreConversation(conversation)}>{conversation.title}<small>{new Date(conversation.updatedAt).toLocaleDateString('zh-CN')}</small></button>
                 <button type="button" aria-label="删除会话" onClick={() => void deleteConversation(conversation.id)}><Trash2 size={14} /></button>
