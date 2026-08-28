@@ -28,6 +28,7 @@ CAT_MD = {
     "办事指南": "办事指南.md",
     "新生指南": "新生指南.md",
     "教务选课": "教务选课.md",
+    "校园活动": "校园活动.md",
 }
 
 
@@ -65,7 +66,9 @@ def to_team_article(item: dict) -> dict:
     category = CATEGORY_MAP.get(item.get("category") or "", item.get("category") or "办事指南")
     url = stable_local_url(item)
     parsed = urlparse(url)
-    source_site = parsed.netloc or ("local.doc" if url.startswith("local://") else "curated.local")
+    source_site = item.get("source_site") or parsed.netloc or (
+        "local.doc" if url.startswith("local://") else "curated.local"
+    )
     content = (item.get("content") or item.get("summary") or "")[:8000]
     content = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", content)
     content = re.sub(r"\n{3,}", "\n\n", content).strip()
@@ -84,9 +87,9 @@ def to_team_article(item: dict) -> dict:
         "cost": item.get("cost") or "",
         "how_to": item.get("how_to") or "",
         "relevance_score": int(item.get("relevance_score") or 10),
-        "kind": "curated",
+        "kind": item.get("kind") or "curated",
         "source_site": source_site,
-        "related_urls": [],
+        "related_urls": item.get("related_urls") or [],
     }
     return article
 
@@ -126,7 +129,7 @@ def rewrite_category_md(path: Path, articles: list[dict]) -> None:
     path.write_text(out, encoding="utf-8")
 
 
-def update_overview(all_articles: list[dict]) -> None:
+def update_overview(all_articles: list[dict], batch_note: str = "数据增量") -> None:
     counts = Counter(a.get("category") for a in all_articles)
     src_counts = Counter(a.get("source") for a in all_articles)
     now = datetime.now(timezone.utc).isoformat()
@@ -134,7 +137,7 @@ def update_overview(all_articles: list[dict]) -> None:
         "# 整合去重 · 总览",
         "",
         f"- 原始采集时间：2026-08-16T17:00:56.639822+00:00",
-        f"- 最近增量：{now}（本地文档入库）",
+        f"- 最近增量：{now}（{batch_note}）",
         f"- 条目总数：{len(all_articles)}",
         "",
         "## 按栏目",
@@ -190,7 +193,7 @@ def patch_readme_counts(total: int) -> None:
 
     root_readme = REPO / "README.md"
     rr = root_readme.read_text(encoding="utf-8")
-    rr = re.sub(r"（1295 条，含 search_text）", f"（{total} 条，含 search_text）", rr)
+    rr = re.sub(r"（\d+ 条，含 search_text）", f"（{total} 条，含 search_text）", rr)
     root_readme.write_text(rr, encoding="utf-8")
 
     team_readme = TEAM_DIR / "README.md"
@@ -205,17 +208,16 @@ def patch_readme_counts(total: int) -> None:
     team_readme.write_text(tr, encoding="utf-8")
 
 
-def main() -> int:
+def merge_raw_items(raw_items: list[dict], batch_note: str = "数据增量") -> int:
     payload = json.loads(RAW_PATH.read_text(encoding="utf-8"))
     st_payload = json.loads(ST_PATH.read_text(encoding="utf-8"))
-    local = json.loads(LOCAL.read_text(encoding="utf-8"))
 
     existing = payload.get("articles") or []
     known = {norm_url(a.get("url") or "") for a in existing if a.get("url")}
 
     added: list[dict] = []
     by_cat: dict[str, list[dict]] = {}
-    for raw in local.get("articles") or []:
+    for raw in raw_items:
         art = to_team_article(raw)
         key = norm_url(art["url"])
         if not key or key in known:
@@ -225,7 +227,6 @@ def main() -> int:
         by_cat.setdefault(art["category"], []).append(art)
 
     if not added:
-        print("没有可新增条目（URL 均已存在）")
         return 0
 
     all_articles = existing + added
@@ -266,12 +267,22 @@ def main() -> int:
             continue
         rewrite_category_md(docs_dir / md_name, arts)
 
-    update_overview(all_articles)
+    update_overview(all_articles, batch_note=batch_note)
     append_full_list(added, start_index=len(existing) + 1)
     patch_readme_counts(len(all_articles))
+    return len(added)
 
-    print(f"新增 {len(added)} 条，总计 {len(all_articles)}")
-    for a in added:
+
+def main() -> int:
+    local = json.loads(LOCAL.read_text(encoding="utf-8"))
+    added_count = merge_raw_items(local.get("articles") or [], batch_note="本地文档入库")
+    if not added_count:
+        print("没有可新增条目（URL 均已存在）")
+        return 0
+
+    payload = json.loads(RAW_PATH.read_text(encoding="utf-8"))
+    print(f"新增 {added_count} 条，总计 {payload['total']}")
+    for a in payload["articles"][-added_count:]:
         print(f"  - [{a['category']}] {a['title']} -> {a['url']}")
     return 0
 
