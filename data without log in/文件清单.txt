@@ -1,13 +1,14 @@
-整合去重结果（data without log in 发布镜像 · 2026-08-28）
+整合去重结果（data without log in 发布镜像 · 2026-08-28 并入 member-A）
 
-- 条目总数：12863
+- 条目总数：13188
 - 覆盖栏目：39
-- 去重：URL 规范化 0 组；标题指纹+相似度合并 169 组；年份冲突 188 对转人工复核
-- 脱敏：sanitized=true，PII 8 类复扫 0 命中
+- 组成：curated 63 + crawled 732 + crawl 12393
+- 去重：URL 规范化 0 组；member-A 线下文档/精选内容已收录未重复并入
+- 脱敏：sanitized=true，PII 8 类复扫 0 命中，URL 长数字残留 0
 
 主库：
-  原始数据_整合_search_text.json（12863 条）
-  原始数据_整合.json（无 search_text，12863 条）
+  原始数据_整合_search_text.json（13188 条）
+  原始数据_整合.json（无 search_text，13188 条）
 
 文档：文档/00_总览与使用说明.md、01_按栏目索引.md、02_全量清单.md、按栏目/（39 册）
 表格：表格/整合去重_全量.csv、整合去重_全量.xlsx
