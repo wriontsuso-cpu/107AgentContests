@@ -1,10 +1,12 @@
 import type { AssistantResponse } from '@/services/assistantClient'
 
-export interface LocalProfile {
+export interface LocalAccount {
   id: string
-  nickname: string
-  pinHash: string
-  pinSalt: string
+  username: string
+  normalizedUsername: string
+  passwordHash: string
+  passwordSalt: string
+  avatarDataUrl?: string
   createdAt: string
   lastUsedAt: string
 }
@@ -17,31 +19,32 @@ export interface StoredConversationMessage {
 
 export interface StoredConversation {
   id: string
-  profileId: string
+  accountId: string
   title: string
   messages: StoredConversationMessage[]
   createdAt: string
   updatedAt: string
 }
 
-export type ConversationDraft = Omit<StoredConversation, 'profileId'>
+export type ConversationDraft = Omit<StoredConversation, 'accountId'>
 
 export interface LocalSearchRecord {
   id: string
-  profileId: string
+  accountId: string
   query: string
   createdAt: string
 }
 
-export interface ProfileStore {
-  listProfiles(): Promise<LocalProfile[]>
-  createProfile(nickname: string, pin: string): Promise<LocalProfile>
-  verifyPin(profileId: string, pin: string): Promise<boolean>
-  deleteProfile(profileId: string): Promise<void>
-  listConversations(profileId: string): Promise<StoredConversation[]>
-  saveConversation(profileId: string, conversation: ConversationDraft): Promise<StoredConversation>
+export interface AccountStore {
+  listAccounts(): Promise<LocalAccount[]>
+  createAccount(username: string, password: string, avatarDataUrl?: string): Promise<LocalAccount>
+  verifyCredentials(username: string, password: string): Promise<LocalAccount | null>
+  deleteAccount(accountId: string): Promise<void>
+  consumeMigrationNotice(): Promise<boolean>
+  listConversations(accountId: string): Promise<StoredConversation[]>
+  saveConversation(accountId: string, conversation: ConversationDraft): Promise<StoredConversation>
   deleteConversation(conversationId: string): Promise<void>
-  listSearches(profileId: string): Promise<LocalSearchRecord[]>
-  saveSearch(profileId: string, query: string): Promise<LocalSearchRecord>
+  listSearches(accountId: string): Promise<LocalSearchRecord[]>
+  saveSearch(accountId: string, query: string): Promise<LocalSearchRecord>
   deleteSearch(searchId: string): Promise<void>
 }

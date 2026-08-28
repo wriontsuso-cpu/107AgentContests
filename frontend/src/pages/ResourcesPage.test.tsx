@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import ResourcesPage from './ResourcesPage'
-import { ProfileProvider } from '@/profile/ProfileContext'
-import { createIndexedDbProfileStore } from '@/profile/profileStore'
+import { AccountProvider } from '@/profile/AccountContext'
+import { createIndexedDbAccountStore } from '@/profile/profileStore'
 
 function LocationProbe() {
   const location = useLocation()
@@ -13,16 +13,16 @@ function LocationProbe() {
 }
 
 function renderPage(path = '/resources') {
-  const store = createIndexedDbProfileStore({ databaseName: `resources-${crypto.randomUUID()}` })
+  const store = createIndexedDbAccountStore({ databaseName: `resources-${crypto.randomUUID()}` })
   return render(
-    <ProfileProvider store={store}>
+    <AccountProvider store={store}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/resources" element={<ResourcesPage />} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>
-    </ProfileProvider>,
+    </AccountProvider>,
   )
 }
 
@@ -33,6 +33,7 @@ describe('ResourcesPage', () => {
     expect(screen.getByRole('heading', { name: '要找的入口，从这里出发。' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: '夕阳下的大学校园草坪与远景学生' })).toHaveAttribute('src', '/brand/home-campus-life-wide.webp')
     expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByRole('searchbox', { name: '搜索资源' }))
+    expect(screen.getByRole('searchbox', { name: '搜索资源' })).toHaveAttribute('placeholder', '搜索资源名称、用途或发布单位')
     expect(screen.queryByText(/把分散的入口/)).not.toBeInTheDocument()
   })
 

@@ -1,10 +1,12 @@
-import type { LocalProfile, LocalSearchRecord, ProfileStore, StoredConversation } from './types'
+import type { AccountStore, LocalAccount, LocalSearchRecord, StoredConversation } from './types'
 
-const DATABASE_VERSION = 2
-const PROFILE_STORE = 'profiles'
+const DATABASE_VERSION = 3
+const ACCOUNT_STORE = 'accounts'
 const CONVERSATION_STORE = 'conversations'
 const SEARCH_STORE = 'searches'
-const PIN_ITERATIONS = 100_000
+const META_STORE = 'meta'
+const MIGRATION_NOTICE_KEY = 'v2-migration-notice'
+const PASSWORD_ITERATIONS = 210_000
 
 export const DEVICE_HISTORY_OWNER_ID = '__local_device__'
 
@@ -34,13 +36,30 @@ function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0))
 }
 
-async function derivePin(pin: string, salt: Uint8Array): Promise<string> {
-  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits'])
-  const derived = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PIN_ITERATIONS }, keyMaterial, 256)
+export function normalizeUsername(username: string): string {
+  return username.trim().normalize('NFKC').toLocaleLowerCase('zh-CN')
+}
+
+function validateUsername(username: string): { username: string; normalizedUsername: string } {
+  const trimmed = username.trim().normalize('NFKC')
+  const length = [...trimmed].length
+  if (length < 2 || length > 24) throw new Error('用户名需要填写 2–24 个字符')
+  if (!/^[\p{L}\p{N}_-]+$/u.test(trimmed)) throw new Error('用户名只能包含中英文、数字、下划线和短横线')
+  return { username: trimmed, normalizedUsername: normalizeUsername(trimmed) }
+}
+
+function validatePassword(password: string): void {
+  if (password.length < 8 || password.length > 128) throw new Error('密码需要填写 8–128 个字符')
+  if (!password.trim()) throw new Error('密码不能全部为空白')
+}
+
+async function derivePassword(password: string, salt: Uint8Array): Promise<string> {
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
+  const derived = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PASSWORD_ITERATIONS }, keyMaterial, 256)
   return bytesToBase64(new Uint8Array(derived))
 }
 
-export function createIndexedDbProfileStore(options: { databaseName?: string } = {}): ProfileStore {
+export function createIndexedDbAccountStore(options: { databaseName?: string } = {}): AccountStore {
   const databaseName = options.databaseName ?? 'ustc-navigator'
   let databasePromise: Promise<IDBDatabase> | undefined
 
@@ -48,101 +67,132 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
     if (!databasePromise) {
       databasePromise = new Promise((resolve, reject) => {
         const request = indexedDB.open(databaseName, DATABASE_VERSION)
-        request.onupgradeneeded = () => {
+        request.onupgradeneeded = (event) => {
           const db = request.result
-          if (!db.objectStoreNames.contains(PROFILE_STORE)) db.createObjectStore(PROFILE_STORE, { keyPath: 'id' })
-          if (!db.objectStoreNames.contains(CONVERSATION_STORE)) {
-            const store = db.createObjectStore(CONVERSATION_STORE, { keyPath: 'id' })
-            store.createIndex('profileId', 'profileId', { unique: false })
-            store.createIndex('profileUpdatedAt', ['profileId', 'updatedAt'], { unique: false })
+          const oldVersion = event.oldVersion
+
+          if (db.objectStoreNames.contains('profiles')) db.deleteObjectStore('profiles')
+          if (db.objectStoreNames.contains(CONVERSATION_STORE)) db.deleteObjectStore(CONVERSATION_STORE)
+          if (db.objectStoreNames.contains(SEARCH_STORE)) db.deleteObjectStore(SEARCH_STORE)
+
+          if (!db.objectStoreNames.contains(ACCOUNT_STORE)) {
+            const accounts = db.createObjectStore(ACCOUNT_STORE, { keyPath: 'id' })
+            accounts.createIndex('normalizedUsername', 'normalizedUsername', { unique: true })
           }
-          if (!db.objectStoreNames.contains(SEARCH_STORE)) {
-            const store = db.createObjectStore(SEARCH_STORE, { keyPath: 'id' })
-            store.createIndex('profileId', 'profileId', { unique: false })
-            store.createIndex('profileCreatedAt', ['profileId', 'createdAt'], { unique: false })
+          const conversations = db.createObjectStore(CONVERSATION_STORE, { keyPath: 'id' })
+          conversations.createIndex('accountId', 'accountId', { unique: false })
+          conversations.createIndex('accountUpdatedAt', ['accountId', 'updatedAt'], { unique: false })
+          const searches = db.createObjectStore(SEARCH_STORE, { keyPath: 'id' })
+          searches.createIndex('accountId', 'accountId', { unique: false })
+          searches.createIndex('accountCreatedAt', ['accountId', 'createdAt'], { unique: false })
+          if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE, { keyPath: 'key' })
+
+          if (oldVersion > 0 && oldVersion < DATABASE_VERSION) {
+            request.transaction?.objectStore(META_STORE).put({ key: MIGRATION_NOTICE_KEY, value: true })
           }
         }
         request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error ?? new Error('无法打开本机档案数据库'))
+        request.onerror = () => reject(request.error ?? new Error('无法打开本机账号数据库'))
       })
     }
     return databasePromise
   }
 
   return {
-    async listProfiles() {
+    async listAccounts() {
       const db = await database()
-      const transaction = db.transaction(PROFILE_STORE, 'readonly')
-      const profiles = await requestResult(transaction.objectStore(PROFILE_STORE).getAll() as IDBRequest<LocalProfile[]>)
+      const transaction = db.transaction(ACCOUNT_STORE, 'readonly')
+      const accounts = await requestResult(transaction.objectStore(ACCOUNT_STORE).getAll() as IDBRequest<LocalAccount[]>)
       await transactionDone(transaction)
-      return profiles.sort((left, right) => right.lastUsedAt.localeCompare(left.lastUsedAt))
+      return accounts.sort((left, right) => right.lastUsedAt.localeCompare(left.lastUsedAt))
     },
 
-    async createProfile(nickname, pin) {
-      const normalizedNickname = nickname.trim()
-      if (!normalizedNickname) throw new Error('请输入昵称')
-      if (!/^\d{4,6}$/.test(pin)) throw new Error('PIN 需要填写 4–6 位数字')
+    async createAccount(usernameInput, password, avatarDataUrl) {
+      const { username, normalizedUsername } = validateUsername(usernameInput)
+      validatePassword(password)
+      const db = await database()
+      const duplicateTransaction = db.transaction(ACCOUNT_STORE, 'readonly')
+      const duplicate = await requestResult(duplicateTransaction.objectStore(ACCOUNT_STORE).index('normalizedUsername').get(normalizedUsername) as IDBRequest<LocalAccount | undefined>)
+      await transactionDone(duplicateTransaction)
+      if (duplicate) throw new Error('用户名已存在')
+
       const salt = crypto.getRandomValues(new Uint8Array(16))
       const now = new Date().toISOString()
-      const profile: LocalProfile = {
+      const account: LocalAccount = {
         id: crypto.randomUUID(),
-        nickname: normalizedNickname,
-        pinHash: await derivePin(pin, salt),
-        pinSalt: bytesToBase64(salt),
+        username,
+        normalizedUsername,
+        passwordHash: await derivePassword(password, salt),
+        passwordSalt: bytesToBase64(salt),
+        ...(avatarDataUrl ? { avatarDataUrl } : {}),
         createdAt: now,
         lastUsedAt: now,
       }
-      const db = await database()
-      const transaction = db.transaction(PROFILE_STORE, 'readwrite')
-      transaction.objectStore(PROFILE_STORE).add(profile)
+      const transaction = db.transaction(ACCOUNT_STORE, 'readwrite')
+      transaction.objectStore(ACCOUNT_STORE).add(account)
       await transactionDone(transaction)
-      return profile
+      return account
     },
 
-    async verifyPin(profileId, pin) {
+    async verifyCredentials(username, password) {
       const db = await database()
-      const transaction = db.transaction(PROFILE_STORE, 'readonly')
-      const profile = await requestResult(transaction.objectStore(PROFILE_STORE).get(profileId) as IDBRequest<LocalProfile | undefined>)
+      const transaction = db.transaction(ACCOUNT_STORE, 'readonly')
+      const account = await requestResult(transaction.objectStore(ACCOUNT_STORE).index('normalizedUsername').get(normalizeUsername(username)) as IDBRequest<LocalAccount | undefined>)
       await transactionDone(transaction)
-      if (!profile) return false
-      const candidate = await derivePin(pin, base64ToBytes(profile.pinSalt))
-      if (candidate !== profile.pinHash) return false
-      const update = db.transaction(PROFILE_STORE, 'readwrite')
-      update.objectStore(PROFILE_STORE).put({ ...profile, lastUsedAt: new Date().toISOString() })
+      if (!account) return null
+      const candidate = await derivePassword(password, base64ToBytes(account.passwordSalt))
+      if (candidate !== account.passwordHash) return null
+      const updated = { ...account, lastUsedAt: new Date().toISOString() }
+      const update = db.transaction(ACCOUNT_STORE, 'readwrite')
+      update.objectStore(ACCOUNT_STORE).put(updated)
       await transactionDone(update)
-      return true
+      return updated
     },
 
-    async deleteProfile(profileId) {
+    async deleteAccount(accountId) {
       const db = await database()
-      const transaction = db.transaction([PROFILE_STORE, CONVERSATION_STORE, SEARCH_STORE], 'readwrite')
-      transaction.objectStore(PROFILE_STORE).delete(profileId)
+      const transaction = db.transaction([ACCOUNT_STORE, CONVERSATION_STORE, SEARCH_STORE], 'readwrite')
+      transaction.objectStore(ACCOUNT_STORE).delete(accountId)
       const conversationStore = transaction.objectStore(CONVERSATION_STORE)
-      const conversations = await requestResult(conversationStore.index('profileId').getAll(profileId) as IDBRequest<StoredConversation[]>)
+      const conversations = await requestResult(conversationStore.index('accountId').getAll(accountId) as IDBRequest<StoredConversation[]>)
       for (const conversation of conversations) conversationStore.delete(conversation.id)
       const searchStore = transaction.objectStore(SEARCH_STORE)
-      const searches = await requestResult(searchStore.index('profileId').getAll(profileId) as IDBRequest<LocalSearchRecord[]>)
+      const searches = await requestResult(searchStore.index('accountId').getAll(accountId) as IDBRequest<LocalSearchRecord[]>)
       for (const search of searches) searchStore.delete(search.id)
       await transactionDone(transaction)
     },
 
-    async listConversations(profileId) {
+    async consumeMigrationNotice() {
+      const db = await database()
+      const transaction = db.transaction(META_STORE, 'readwrite')
+      const store = transaction.objectStore(META_STORE)
+      const notice = await requestResult(store.get(MIGRATION_NOTICE_KEY) as IDBRequest<{ key: string; value: boolean } | undefined>)
+      if (notice) store.delete(MIGRATION_NOTICE_KEY)
+      await transactionDone(transaction)
+      return Boolean(notice?.value)
+    },
+
+    async listConversations(accountId) {
       const db = await database()
       const transaction = db.transaction(CONVERSATION_STORE, 'readonly')
       const store = transaction.objectStore(CONVERSATION_STORE)
-      const request = store.indexNames.contains('profileUpdatedAt')
-        ? store.index('profileUpdatedAt').getAll(IDBKeyRange.bound([profileId, ''], [profileId, '\uffff']))
-        : store.index('profileId').getAll(profileId)
-      const conversations = await requestResult(request as IDBRequest<StoredConversation[]>)
+      const conversations = await requestResult(store.index('accountUpdatedAt').getAll(IDBKeyRange.bound([accountId, ''], [accountId, '\uffff'])) as IDBRequest<StoredConversation[]>)
       await transactionDone(transaction)
       return conversations.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     },
 
-    async saveConversation(profileId, conversation) {
-      const stored: StoredConversation = { ...conversation, profileId }
+    async saveConversation(accountId, conversation) {
+      const stored: StoredConversation = { ...conversation, accountId }
       const db = await database()
       const transaction = db.transaction(CONVERSATION_STORE, 'readwrite')
-      transaction.objectStore(CONVERSATION_STORE).put(stored)
+      const store = transaction.objectStore(CONVERSATION_STORE)
+      store.put(stored)
+      const conversations = await requestResult(store.index('accountId').getAll(accountId) as IDBRequest<StoredConversation[]>)
+      const stale = conversations
+        .filter((item) => item.id !== stored.id)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .slice(4)
+      for (const item of stale) store.delete(item.id)
       await transactionDone(transaction)
       return stored
     },
@@ -154,25 +204,19 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
       await transactionDone(transaction)
     },
 
-    async listSearches(profileId) {
+    async listSearches(accountId) {
       const db = await database()
       const transaction = db.transaction(SEARCH_STORE, 'readonly')
-      const store = transaction.objectStore(SEARCH_STORE)
-      const request = store.index('profileCreatedAt').getAll(IDBKeyRange.bound([profileId, ''], [profileId, '\uffff']))
+      const request = transaction.objectStore(SEARCH_STORE).index('accountCreatedAt').getAll(IDBKeyRange.bound([accountId, ''], [accountId, '\uffff']))
       const searches = await requestResult(request as IDBRequest<LocalSearchRecord[]>)
       await transactionDone(transaction)
       return searches.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     },
 
-    async saveSearch(profileId, query) {
+    async saveSearch(accountId, query) {
       const normalizedQuery = query.trim()
       if (!normalizedQuery) throw new Error('搜索内容不能为空')
-      const search: LocalSearchRecord = {
-        id: crypto.randomUUID(),
-        profileId,
-        query: normalizedQuery,
-        createdAt: new Date().toISOString(),
-      }
+      const search: LocalSearchRecord = { id: crypto.randomUUID(), accountId, query: normalizedQuery, createdAt: new Date().toISOString() }
       const db = await database()
       const transaction = db.transaction(SEARCH_STORE, 'readwrite')
       transaction.objectStore(SEARCH_STORE).put(search)
@@ -189,4 +233,4 @@ export function createIndexedDbProfileStore(options: { databaseName?: string } =
   }
 }
 
-export const indexedDbProfileStore = createIndexedDbProfileStore()
+export const indexedDbAccountStore = createIndexedDbAccountStore()

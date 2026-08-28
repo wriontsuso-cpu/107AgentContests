@@ -17,7 +17,10 @@ export default function HeroExplorer() {
     <section className="home-snow-hero shell-width" aria-labelledby="hero-title">
       <div className="photo-entry__copy">
         <span className="photo-entry__eyebrow">USTC CAMPUS GUIDE · 校园生活指南</span>
-        <h1 id="hero-title" aria-label="今天，想在科大做点什么？">今天，想在科大<br aria-hidden="true" />做点什么？</h1>
+        <h1 id="hero-title" aria-label="今天，想在科大做点什么？">
+          <span className="headline-line" data-testid="headline-line">今天，想在科大</span>
+          <span className="headline-line" data-testid="headline-line">做点什么？</span>
+        </h1>
       </div>
       <div className="photo-entry__actions">
         <form className="hero-search" role="search" onSubmit={handleSubmit}>
@@ -41,7 +44,6 @@ export default function HeroExplorer() {
           </Link>
         </div>
       </div>
-      <p className="home-snow-hero__caption">雪后石碑 · 中国科大官方校园影像</p>
     </section>
   )
 }

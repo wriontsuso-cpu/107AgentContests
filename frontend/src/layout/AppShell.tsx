@@ -2,7 +2,8 @@ import { Menu, Sparkles, UserRound, X } from 'lucide-react'
 import { type PropsWithChildren, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import BrandMark from '@/components/BrandMark'
-import { useProfile } from '@/profile/ProfileContext'
+import AccountAvatar from '@/components/account/AccountAvatar'
+import { useAccount } from '@/profile/AccountContext'
 
 const navigation = [
   { to: '/', label: '首页', end: true },
@@ -12,7 +13,7 @@ const navigation = [
 
 export default function AppShell({ children }: PropsWithChildren) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const { activeProfile } = useProfile()
+  const { activeAccount } = useAccount()
 
   return (
     <div className="app-shell">
@@ -27,18 +28,17 @@ export default function AppShell({ children }: PropsWithChildren) {
                 to={item.to}
                 end={item.end}
                 onClick={() => setMenuOpen(false)}
-                className={({ isActive }) => isActive ? 'site-nav__link site-nav__link--active' : 'site-nav__link'}
+                className={({ isActive }) => item.to === '/assistant'
+                  ? `site-nav__assistant${isActive ? ' site-nav__assistant--active' : ''}`
+                  : isActive ? 'site-nav__link site-nav__link--active' : 'site-nav__link'}
               >
+                {item.to === '/assistant' && <Sparkles size={16} aria-hidden="true" />}
                 {item.label}
               </NavLink>
             ))}
-            <NavLink className="site-nav__assistant" to="/assistant" onClick={() => setMenuOpen(false)}>
-              <Sparkles size={16} aria-hidden="true" />
-              帮我找资源
-            </NavLink>
             <NavLink className="site-nav__profile" to="/profile" onClick={() => setMenuOpen(false)}>
-              <UserRound size={16} aria-hidden="true" />
-              {activeProfile?.nickname ?? '创建档案'}
+              {activeAccount ? <AccountAvatar account={activeAccount} className="site-nav__avatar" /> : <UserRound size={16} aria-hidden="true" />}
+              {activeAccount?.username ?? '登录 / 注册'}
             </NavLink>
           </nav>
           <button
@@ -62,7 +62,6 @@ export default function AppShell({ children }: PropsWithChildren) {
             <p>让校园资源更容易被看见、理解和使用。</p>
           </div>
           <div className="site-footer__meta">
-            <span>学生参赛项目 · 非正式校务系统</span>
             <span>资源信息以原发布单位页面为准</span>
           </div>
         </div>

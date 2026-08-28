@@ -10,11 +10,11 @@ import { pageVisuals } from '@/data/pagePhotography'
 import { resources } from '@/data/resources'
 import type { ResourceCategoryId } from '@/domain/categories'
 import { parseResourceFilters } from '@/lib/resourceSearch'
-import { useProfile } from '@/profile/ProfileContext'
+import { useAccount } from '@/profile/AccountContext'
 import { getResourceTags, listResources, type ResourceListResponse } from '@/services/resourceClient'
 
 export default function ResourcesPage() {
-  const { searches, saveSearch, deleteSearch } = useProfile()
+  const { searches, saveSearch, deleteSearch } = useAccount()
   const [searchParams, setSearchParams] = useSearchParams()
   const paramsRef = useRef(searchParams)
   paramsRef.current = searchParams
