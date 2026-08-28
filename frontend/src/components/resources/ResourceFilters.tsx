@@ -1,6 +1,7 @@
-import { Filter, Search, X } from 'lucide-react'
+import { Clock3, Filter, Search, Trash2, X } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import type { ResourceCategoryId } from '@/domain/categories'
+import type { LocalSearchRecord } from '@/profile/types'
 import CategoryTree from './CategoryTree'
 
 interface ResourceFiltersProps {
@@ -14,9 +15,11 @@ interface ResourceFiltersProps {
   onGroupChange: (group?: string) => void
   onTagChange: (tag?: string) => void
   onClear: () => void
+  recentSearches?: LocalSearchRecord[]
+  onDeleteSearch?: (searchId: string) => void
 }
 
-export default function ResourceFilters({ query, category, group, tag, tags, onSearch, onCategoryChange, onGroupChange, onTagChange, onClear }: ResourceFiltersProps) {
+export default function ResourceFilters({ query, category, group, tag, tags, onSearch, onCategoryChange, onGroupChange, onTagChange, onClear, recentSearches = [], onDeleteSearch }: ResourceFiltersProps) {
   const [draft, setDraft] = useState(query)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -40,6 +43,13 @@ export default function ResourceFilters({ query, category, group, tag, tags, onS
         />
         <button type="submit">搜索</button>
       </form>
+      {recentSearches.length > 0 && <section className="resource-search-history" aria-label="最近搜索">
+        <header><Clock3 size={14} /><span>最近搜索</span></header>
+        <ul>{recentSearches.slice(0, 6).map((search) => <li key={search.id}>
+          <button type="button" onClick={() => { setDraft(search.query); onSearch(search.query) }}>{search.query}</button>
+          <button type="button" title="删除搜索记录" aria-label={`删除搜索记录：${search.query}`} onClick={() => onDeleteSearch?.(search.id)}><Trash2 size={13} /></button>
+        </li>)}</ul>
+      </section>}
       <div className="resource-tag-filter">
         <label htmlFor="resource-tag">标签</label>
         <select id="resource-tag" value={tag ?? ''} onChange={(event) => onTagChange(event.target.value || undefined)}>

@@ -41,6 +41,8 @@ interface ClientOptions {
   useMocks?: boolean
 }
 
+const ASSISTANT_REQUEST_TIMEOUT_MS = 45_000
+
 function inferCategory(message: string): ResourceCategoryId | undefined {
   const rules: [RegExp, ResourceCategoryId][] = [
     [/竞赛|比赛|科创|项目|实践/, 'competition'],
@@ -182,8 +184,9 @@ export async function requestAssistant(request: AssistantRequest, options: Clien
         top_k: 5,
         category: request.category ?? null,
         session_id: request.sessionId,
+        history: request.history.slice(-40),
       }),
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(ASSISTANT_REQUEST_TIMEOUT_MS),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const payload: unknown = await response.json()
@@ -209,6 +212,23 @@ export async function requestAssistant(request: AssistantRequest, options: Clien
     }
   } catch {
     throw new Error('导航服务暂时不可用，请稍后重试。')
+  }
+}
+
+export async function closeAssistantSession(sessionId: string, options: ClientOptions = {}): Promise<void> {
+  const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
+  const useMocks = options.useMocks ?? (import.meta.env.VITE_USE_MOCKS === 'true' || !apiBaseUrl)
+  if (useMocks || !sessionId) return
+
+  const response = await (options.fetcher ?? fetch)(
+    `${apiBaseUrl.replace(/\/$/, '')}/api/sessions/${encodeURIComponent(sessionId)}/exit`,
+    {
+      method: 'POST',
+      signal: AbortSignal.timeout(8_000),
+    },
+  )
+  if (!response.ok && response.status !== 404) {
+    throw new Error('会话暂时无法关闭。')
   }
 }
 

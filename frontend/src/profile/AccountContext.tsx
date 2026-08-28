@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react'
-import { indexedDbAccountStore } from './profileStore'
-import type { AccountStore, ConversationDraft, LocalAccount, StoredConversation } from './types'
+import { DEVICE_HISTORY_OWNER_ID, indexedDbAccountStore } from './profileStore'
+import type { AccountStore, ConversationDraft, LocalAccount, LocalSearchRecord, StoredConversation } from './types'
 
 const SESSION_KEY = 'ustc-navigator-active-account'
 const LEGACY_SESSION_KEY = 'ustc-navigator-active-profile'
@@ -34,6 +34,7 @@ interface AccountContextValue {
   accounts: LocalAccount[]
   activeAccount: LocalAccount | null
   conversations: StoredConversation[]
+  searches: LocalSearchRecord[]
   loading: boolean
   storageAvailable: boolean
   migrationNotice: boolean
@@ -44,6 +45,8 @@ interface AccountContextValue {
   saveConversation: (draft: ConversationDraft) => Promise<StoredConversation | undefined>
   deleteConversation: (conversationId: string) => Promise<void>
   refreshConversations: () => Promise<void>
+  saveSearch: (query: string) => Promise<LocalSearchRecord | undefined>
+  deleteSearch: (searchId: string) => Promise<void>
   pendingGuestConversation: ConversationDraft | null
   offerGuestConversation: (conversation: ConversationDraft) => void
   clearGuestConversation: () => void
@@ -55,6 +58,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
   const [accounts, setAccounts] = useState<LocalAccount[]>([])
   const [activeAccount, setActiveAccount] = useState<LocalAccount | null>(null)
   const [conversations, setConversations] = useState<StoredConversation[]>([])
+  const [searches, setSearches] = useState<LocalSearchRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [storageAvailable, setStorageAvailable] = useState(true)
   const [migrationNotice, setMigrationNotice] = useState(false)
@@ -65,6 +69,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
     setStorageAvailable(false)
     setActiveAccount(null)
     setConversations([])
+    setSearches([])
   }
 
   useEffect(() => {
@@ -81,6 +86,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
         const restored = available.find((account) => account.id === activeId) ?? null
         setActiveAccount(restored)
         if (restored) setConversations(await store.listConversations(restored.id))
+        setSearches(await store.listSearches(restored?.id ?? DEVICE_HISTORY_OWNER_ID))
       } catch {
         if (!cancelled) markStorageUnavailable()
       } finally {
@@ -113,6 +119,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
       rememberActiveAccount(account.id)
       setActiveAccount(account)
       setConversations([])
+      setSearches([])
       return account
     } catch (error) {
       if (!(error instanceof Error) || !/用户名|密码/.test(error.message)) markStorageUnavailable()
@@ -128,6 +135,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
       rememberActiveAccount(verified.id)
       setActiveAccount(verified)
       setConversations(await store.listConversations(verified.id))
+      setSearches(await store.listSearches(verified.id))
       return true
     } catch {
       markStorageUnavailable()
@@ -139,6 +147,7 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
     forgetActiveAccount()
     setActiveAccount(null)
     setConversations([])
+    void store.listSearches(DEVICE_HISTORY_OWNER_ID).then(setSearches).catch(markStorageUnavailable)
   }
 
   const deleteAccount = async (accountId: string) => {
@@ -173,8 +182,32 @@ export function AccountProvider({ children, store = indexedDbAccountStore }: Pro
     }
   }
 
+  const saveSearch = async (query: string) => {
+    if (!storageAvailable) return undefined
+    const ownerId = activeAccount?.id ?? DEVICE_HISTORY_OWNER_ID
+    try {
+      const saved = await store.saveSearch(ownerId, query)
+      setSearches(await store.listSearches(ownerId))
+      return saved
+    } catch {
+      markStorageUnavailable()
+      return undefined
+    }
+  }
+
+  const deleteSearch = async (searchId: string) => {
+    if (!storageAvailable) return
+    const ownerId = activeAccount?.id ?? DEVICE_HISTORY_OWNER_ID
+    try {
+      await store.deleteSearch(searchId)
+      setSearches(await store.listSearches(ownerId))
+    } catch {
+      markStorageUnavailable()
+    }
+  }
+
   return (
-    <AccountContext.Provider value={{ accounts, activeAccount, conversations, loading, storageAvailable, migrationNotice, register, login, logout, deleteAccount, saveConversation, deleteConversation, refreshConversations, pendingGuestConversation, offerGuestConversation: setPendingGuestConversation, clearGuestConversation: () => setPendingGuestConversation(null) }}>
+    <AccountContext.Provider value={{ accounts, activeAccount, conversations, searches, loading, storageAvailable, migrationNotice, register, login, logout, deleteAccount, saveConversation, deleteConversation, refreshConversations, saveSearch, deleteSearch, pendingGuestConversation, offerGuestConversation: setPendingGuestConversation, clearGuestConversation: () => setPendingGuestConversation(null) }}>
       {children}
     </AccountContext.Provider>
   )

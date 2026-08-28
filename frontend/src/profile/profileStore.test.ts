@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
-import { createIndexedDbAccountStore } from './profileStore'
+import { createIndexedDbAccountStore, DEVICE_HISTORY_OWNER_ID } from './profileStore'
 
 function createStore(databaseName = `ustc-navigator-test-${crypto.randomUUID()}`) {
   return createIndexedDbAccountStore({ databaseName })
@@ -18,6 +18,20 @@ function createLegacyDatabase(databaseName: string): Promise<void> {
       request.result.close()
       resolve()
     }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+function createLegacyV2Database(databaseName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName, 2)
+    request.onupgradeneeded = () => {
+      const database = request.result
+      database.createObjectStore('profiles', { keyPath: 'id' }).add({ id: 'legacy-profile', nickname: '旧档案' })
+      database.createObjectStore('conversations', { keyPath: 'id' }).add({ id: 'legacy-conversation', profileId: 'legacy-profile' })
+      database.createObjectStore('searches', { keyPath: 'id' }).add({ id: 'legacy-search', profileId: 'legacy-profile', query: '旧搜索' })
+    }
+    request.onsuccess = () => { request.result.close(); resolve() }
     request.onerror = () => reject(request.error)
   })
 }
@@ -87,6 +101,19 @@ describe('IndexedDB account store', () => {
     expect(await store.listConversations(account.id)).toEqual([])
   })
 
+  it('stores local resource searches and deletes account-owned searches', async () => {
+    const store = createStore()
+    const account = await store.createAccount('search-owner', 'password-search')
+    await store.saveSearch(DEVICE_HISTORY_OWNER_ID, '图书馆预约')
+    await store.saveSearch(account.id, '校医院')
+
+    expect((await store.listSearches(DEVICE_HISTORY_OWNER_ID)).map((item) => item.query)).toEqual(['图书馆预约'])
+    expect((await store.listSearches(account.id)).map((item) => item.query)).toEqual(['校医院'])
+    await store.deleteAccount(account.id)
+    expect(await store.listSearches(account.id)).toEqual([])
+    expect(await store.listSearches(DEVICE_HISTORY_OWNER_ID)).toHaveLength(1)
+  })
+
   it('clears v1 PIN profiles and exposes the upgrade notice once', async () => {
     const databaseName = `ustc-navigator-legacy-${crypto.randomUUID()}`
     await createLegacyDatabase(databaseName)
@@ -95,5 +122,15 @@ describe('IndexedDB account store', () => {
     expect(await store.listAccounts()).toEqual([])
     await expect(store.consumeMigrationNotice()).resolves.toBe(true)
     await expect(store.consumeMigrationNotice()).resolves.toBe(false)
+  })
+
+  it('clears the deployed v2 PIN schema before creating v3 accounts', async () => {
+    const databaseName = `ustc-navigator-legacy-v2-${crypto.randomUUID()}`
+    await createLegacyV2Database(databaseName)
+    const store = createStore(databaseName)
+
+    expect(await store.listAccounts()).toEqual([])
+    expect(await store.listSearches(DEVICE_HISTORY_OWNER_ID)).toEqual([])
+    await expect(store.consumeMigrationNotice()).resolves.toBe(true)
   })
 })

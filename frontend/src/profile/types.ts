@@ -28,6 +28,13 @@ export interface StoredConversation {
 
 export type ConversationDraft = Omit<StoredConversation, 'accountId'>
 
+export interface LocalSearchRecord {
+  id: string
+  accountId: string
+  query: string
+  createdAt: string
+}
+
 export interface AccountStore {
   listAccounts(): Promise<LocalAccount[]>
   createAccount(username: string, password: string, avatarDataUrl?: string): Promise<LocalAccount>
@@ -37,4 +44,7 @@ export interface AccountStore {
   listConversations(accountId: string): Promise<StoredConversation[]>
   saveConversation(accountId: string, conversation: ConversationDraft): Promise<StoredConversation>
   deleteConversation(conversationId: string): Promise<void>
+  listSearches(accountId: string): Promise<LocalSearchRecord[]>
+  saveSearch(accountId: string, query: string): Promise<LocalSearchRecord>
+  deleteSearch(searchId: string): Promise<void>
 }

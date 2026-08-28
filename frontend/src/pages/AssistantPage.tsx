@@ -9,6 +9,7 @@ import GlassPanel from '@/components/visual/GlassPanel'
 import { pageVisuals } from '@/data/pagePhotography'
 import {
   assistantStarterPrompts,
+  closeAssistantSession,
   requestAssistant,
   type AssistantClient,
   type AssistantHistoryMessage,
@@ -99,21 +100,25 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
   }
 
   function reset() {
+    const activeSessionId = sessionId
     setMessages([openingMessage])
     setError(undefined)
     setLastMessage('')
     setSessionId(undefined)
     conversationId.current = crypto.randomUUID()
     conversationCreatedAt.current = new Date().toISOString()
+    if (activeSessionId) void closeAssistantSession(activeSessionId).catch(() => undefined)
   }
 
   function restoreConversation(conversation: StoredConversation) {
+    const activeSessionId = sessionId
     setMessages(conversation.messages.map((message, index) => ({ ...message, id: `restored-${conversation.id}-${index}` })))
     conversationId.current = conversation.id
     conversationCreatedAt.current = conversation.createdAt
     setSessionId(undefined)
     setError(undefined)
     setHistoryOpen(false)
+    if (activeSessionId) void closeAssistantSession(activeSessionId).catch(() => undefined)
   }
 
   return (
