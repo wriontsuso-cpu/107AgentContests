@@ -274,11 +274,12 @@
 .home-snow-canvas .canvas-page__content,
 .resources-canvas .canvas-page__content { z-index: 5; }
 .home-snow-canvas .canvas-page__image {
-  position: absolute;
-  inset: 0;
-  height: 100%;
+  position: fixed;
+  inset: 76px 0 auto;
+  height: calc(100vh - 76px);
   opacity: 1;
-  filter: brightness(.48) saturate(.8) contrast(1.08);
+  filter: brightness(.54) saturate(.86) contrast(1.04);
+  transform: none;
   animation: none;
 }
 .home-snow-canvas .canvas-page__shade {
