@@ -117,6 +117,37 @@ test('desktop canvas keeps its photograph visible behind glass surfaces', async 
   expect(warm).not.toBe('rgb(255, 255, 255)')
 })
 
+test('homepage keeps the hero photograph at viewport scale for a crisp result', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/')
+
+  const imageBox = await page.locator('.home-snow-canvas .canvas-page__image').boundingBox()
+  expect(imageBox).not.toBeNull()
+  expect(imageBox!.height).toBeLessThanOrEqual(1000)
+  await expect(page.locator('.home-snow-canvas .canvas-page__image')).toHaveCSS('transform', 'none')
+})
+
+test('resource directory footer remains visible above its fixed photograph', async ({ page }) => {
+  await page.goto('/resources')
+  const footer = page.locator('.site-footer')
+  await footer.scrollIntoViewIfNeeded()
+
+  const footerIsTopmost = await footer.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + Math.min(rect.height / 2, 40))
+    return topmost === element || element.contains(topmost)
+  })
+  expect(footerIsTopmost).toBe(true)
+  const photograph = page.locator('.resources-canvas .canvas-page__image')
+  await expect(photograph).toBeVisible()
+  const stacking = {
+    footer: Number.parseInt(await footer.evaluate((element) => getComputedStyle(element).zIndex), 10),
+    photograph: Number.parseInt(await photograph.evaluate((element) => getComputedStyle(element).zIndex), 10),
+  }
+  expect(stacking.footer).toBeGreaterThan(stacking.photograph)
+  await expect(footer.getByText('资源信息以原发布单位页面为准')).toBeVisible()
+})
+
 test('keyboard users can reach and submit the primary search', async ({ page }) => {
   await page.goto('/')
   await page.locator('body').focus()
