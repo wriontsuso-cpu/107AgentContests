@@ -43,3 +43,6 @@ master 总条数 12882, 分类数 39
 内容级去重: 13188 -> 12882（标题指纹 149 组 + 相似度 157 组自动合并，-306）；年份冲突护栏 188 对、近重复 4694 对待复核（按终裁保持独立未合并）
 三性: 全库打标 info_status/event_date/expired/freshness + disposition（keep 3849/flag 6449/deprecate 2584）；有效性抽样 120 条 reachable
 脱敏: sanitized=true, 关键PII 0命中；file:// 本地路径 24 条已中性化（去用户名）
+
+content_info 覆盖 12882/12882（digest 平均 40.5 字 / 每条恰 2 要点）
+
