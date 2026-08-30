@@ -1,13 +1,14 @@
 # 整合去重结果（data without log in 发布镜像）
 
-- 数据版本：2026-08-28（数据库整理助手 v2：内容级去重 + 三性审核 + 脱敏复扫）
+- 数据版本：2026-08-30（数据库整理助手整理优化轮：去重幂等复核 + 三性基准日重算 + 脱敏复扫 + content_info 口径修正）
 - 条目总数：12882（上一版 13188 → 内容级去重 -306）
 - 覆盖栏目：39
 - 组成：curated 63 + crawled 651 + crawl 12168
 - search_text 覆盖：12882/12882（均长 210.5）
 - 去重：URL 规范化 0 重复组；标题指纹 149 组 + 内容相似度 157 组自动合并（共 -306）；年份冲突护栏 188 对、近重复 4694 对待复核（保持独立未合并）
-- 三性标注：info_status/event_date/expired/freshness + disposition(keep/flag/deprecate) + url_status 抽样（120 条 reachable）
+- 三性标注：disposition keep 3845 / flag 6449 / deprecate 2588（只标注不删除）；有效性分层抽样 120 条本轮返回 403/429 判 blocked（登录态/WAF，不判内容错误）
 - 脱敏：sanitized=true；PII 8 类全字段 dry-run 0 命中、写回复扫 0 命中；`file://` 本地绝对路径 24 条已中性化脱敏（去用户名）
+- 内容补足：content_info 覆盖 12882/12882（digest 平均 40.5 字 / 每条恰 2 要点），口径超限 2 处已修正
 
 ## 目录
 
