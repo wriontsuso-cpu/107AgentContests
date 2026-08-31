@@ -47,3 +47,5 @@ master 总条数 12882, 分类数 39
 content_info 覆盖 12882/12882（digest 平均 40.5 字 / 每条恰 2 要点）
 
 2026-08-30 整理优化轮：去重幂等复核 0 自动合并（待复核 4407 对保持独立）；三性基准日 2026-08-30 重算 disposition keep3845/flag6449/deprecate2588；有效性抽样 120 条 blocked（403/429，登录态/WAF）；content_info 2 处口径超限修正（digest≤90/points≤24）覆盖 12882/12882；PII 复扫 0
+
+2026-08-31 全量链接探活轮：唯一 URL 12880 全量探活（reachable 12219 / blocked 238 / dead 392 / unknown 8；local 24 / mailto 1 不参与 HTTP 探活）；新增 url_http 全库 12882 条、url_err 663 条原因；url_checked_at=2026-08-31

@@ -36,6 +36,14 @@
 - 接口规范补登记：整理助手审核/脱敏标注字段（info_status/event_date/expired/freshness/sanitized 等）与会员 A 可选字段（access_url/db_status/subscription）补入字段字典；`kind` 行冗余括注修复；顶层结构登记 `sanitized`
 - PII 8 类 dry-run 与写回复扫 0 命中；发布数据无本地绝对路径/用户名；质检「通过」
 
+## 数据现状（2026-08-31 · 全量链接探活）
+
+- 全量链接探活：主库 12882 条 → 唯一 URL 12880 个（1 个 mailto、24 个本地离线文档除外）全部实测，结论 reachable 12219 / blocked 238 / dead 392 / unknown 8 / local 24 / unchecked 1
+- 新增全库字段 `url_http`（探活返回码）与 `url_err`（不可直连原因）：blocked = 登录墙(CAS) 119 + 403 受限 119；dead = 404 已下线 344 + 410 已删除 48；unknown = SSL 异常 5 / 反爬 412 2 / 502 1
+- i.ustc.edu.cn 此前 404 已确认不是内网登录墙：根因为 SPA 路由缺 `/page/site/` 前缀（commit 54fc096 已修复）；主域 4895 条现全部 HTTP 200（其中 18 条为需登录应用，属登录墙）
+- `url_checked_at` 全量更新为 2026-08-31；http→https 同路径升级 429 条（幂等，四份主库同步）
+- 质检：四份主库 JSON 完整解析、逐行按 id 对齐；`数据接口规范.md` 三处同步登记 `url_http`/`url_err` 与探活口径；完整报告见工作区 `运行/全量链接验证_20260831/21_全量探活报告.md`
+
 ## 合规边界
 
 仅收录公开/指导型内容；不含成绩、选课、消费流水、体检、资助申请等个人记录；所有 Cookie 文件不入库；发布数据不含本地绝对路径/用户名。
