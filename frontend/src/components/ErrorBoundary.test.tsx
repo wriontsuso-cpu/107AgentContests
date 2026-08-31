@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import ErrorBoundary from './ErrorBoundary'
 
-function Boom() {
+function Boom(): null {
   throw new Error('render failed')
 }
 
