@@ -69,6 +69,18 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         self.assertTrue(self.knowledge_base.is_known_url(results[0].url))
         self.assertFalse(self.knowledge_base.is_known_url("https://evil.example/phish"))
 
+    def test_fuzzy_queries_prefer_weighted_service_entries(self) -> None:
+        seats = self.knowledge_base.search("座位预约", limit=5)
+        self.assertTrue(seats)
+        self.assertTrue(any("学习空间" in resource.title or "研修" in resource.title for resource in seats[:3]))
+
+        typo = self.knowledge_base.search("图书管", limit=8)
+        self.assertTrue(any("图书馆" in resource.title or "图书馆" in resource.category for resource in typo[:5]))
+
+        mailbox = self.knowledge_base.search("邮箱", limit=3)
+        self.assertEqual(mailbox[0].title, "邮箱")
+        self.assertGreaterEqual(mailbox[0].relevance_score, 7)
+
 
 class NavigationServiceTests(unittest.TestCase):
     def test_database_resources_are_the_llm_context(self) -> None:

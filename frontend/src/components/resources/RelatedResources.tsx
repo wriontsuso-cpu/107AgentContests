@@ -5,7 +5,7 @@ import type { Resource } from '@/domain/resource'
 
 export default function RelatedResources({ current }: { current: Resource }) {
   const related = resources
-    .filter((resource) => resource.id !== current.id && resource.category === current.category)
+    .filter((resource) => resource.id !== current.id && resource.title !== current.title && resource.category === current.category)
     .sort((a, b) => {
       const aOverlap = a.tags.filter((tag) => current.tags.includes(tag)).length
       const bOverlap = b.tags.filter((tag) => current.tags.includes(tag)).length

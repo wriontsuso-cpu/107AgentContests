@@ -13,6 +13,16 @@ from urllib.parse import urlparse
 from config import KnowledgeBaseConfig
 
 
+_RANKING_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "frontend"
+    / "src"
+    / "data"
+    / "raw"
+    / "searchRanking.json"
+)
+_RANKING: dict[str, object] | None = None
+
 CATEGORY_GROUPS: dict[str, tuple[str, ...]] = {
     "services": ("办事指南", "财务服务", "保卫服务", "网站入口", "校级通知", "公示公告", "资源导航", "学工通知", "教务服务"),
     "learning": ("教务通知", "教务选课", "图书馆", "图书馆资源", "免费软件-会员"),
@@ -274,7 +284,7 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         tags=tags,
         cost=_text(row.get("cost")),
         how_to=how_to,
-        relevance_score=_number(row.get("relevance_score")),
+        relevance_score=_weight(row),
         kind=_text(row.get("kind")),
         source_site=source_site,
         related_urls=related_urls,
@@ -284,20 +294,160 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
     )
 
 
+def _ranking() -> dict[str, object]:
+    global _RANKING
+    if _RANKING is None:
+        if _RANKING_PATH.exists():
+            _RANKING = json.loads(_RANKING_PATH.read_text(encoding="utf-8"))
+        else:
+            _RANKING = {
+                "stopwords": sorted(_IGNORED_TERMS),
+                "synonyms": {},
+                "pinyin": {},
+                "keywords": [],
+                "keyServices": {},
+            }
+    return _RANKING
+
+
+def _levenshtein(left: str, right: str, max_dist: int) -> int:
+    if left == right:
+        return 0
+    if abs(len(left) - len(right)) > max_dist:
+        return max_dist + 1
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for i, left_ch in enumerate(left, start=1):
+        current = [i]
+        row_min = i
+        for j, right_ch in enumerate(right, start=1):
+            cost = 0 if left_ch == right_ch else 1
+            value = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+            current.append(value)
+            row_min = min(row_min, value)
+        if row_min > max_dist:
+            return max_dist + 1
+        previous = current
+    return previous[-1]
+
+
+def _window_distance(haystack: str, needle: str, max_dist: int) -> int:
+    if not needle:
+        return 0
+    if needle in haystack:
+        return 0
+    if len(haystack) <= len(needle) + max_dist:
+        return _levenshtein(haystack, needle, max_dist)
+    best = max_dist + 1
+    for length in range(max(1, len(needle) - max_dist), len(needle) + max_dist + 1):
+        for index in range(0, len(haystack) - length + 1):
+            distance = _levenshtein(haystack[index:index + length], needle, max_dist)
+            if distance < best:
+                best = distance
+            if best == 0:
+                return 0
+    return best
+
+
+def _field_match_ratio(field: str, token: str, allow_fuzzy: bool = False) -> float:
+    if not field or not token:
+        return 0.0
+    if field == token:
+        return 1.0
+    if field.startswith(token):
+        return 0.92
+    if token in field:
+        return 0.84
+    if not allow_fuzzy or len(token) < 3 or len(field) > 40:
+        return 0.0
+    max_dist = 1 if len(token) <= 7 else 2
+    distance = _window_distance(field, token, max_dist)
+    if distance <= max_dist:
+        return max(0.48, 0.8 - distance * 0.16)
+    return 0.0
+
+
+def _expand_query(query: str) -> str:
+    ranking = _ranking()
+    expanded = query
+    synonyms = ranking.get("synonyms")
+    if isinstance(synonyms, dict):
+        for source, targets in synonyms.items():
+            if source in expanded and isinstance(targets, list):
+                expanded += " " + " ".join(str(item) for item in targets)
+    pinyin = ranking.get("pinyin")
+    if isinstance(pinyin, dict):
+        lowered = expanded.lower()
+        for source, chinese in pinyin.items():
+            if str(source).lower() in lowered:
+                expanded += f" {chinese}"
+    return expanded
+
+
+def _strip_stopwords(value: str) -> str:
+    ranking = _ranking()
+    stopwords = ranking.get("stopwords")
+    ignored = set(_IGNORED_TERMS)
+    if isinstance(stopwords, list):
+        ignored.update(str(item) for item in stopwords)
+    text = value
+    for stop in sorted(ignored, key=len, reverse=True):
+        text = text.replace(stop, " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _segment_chinese(run: str) -> list[str]:
+    ranking = _ranking()
+    raw_keywords = ranking.get("keywords")
+    keywords = sorted(
+        (str(item) for item in raw_keywords if str(item)),
+        key=len,
+        reverse=True,
+    ) if isinstance(raw_keywords, list) else []
+    parts: list[str] = []
+    index = 0
+    while index < len(run):
+        matched = next((item for item in keywords if run.startswith(item, index)), "")
+        if matched:
+            parts.append(matched)
+            index += len(matched)
+            continue
+        cursor = index + 1
+        while cursor < len(run) and not any(run.startswith(item, cursor) for item in keywords):
+            cursor += 1
+        chunk = run[index:cursor]
+        if len(chunk) >= 2:
+            parts.append(chunk)
+        elif len(run) == 1:
+            parts.append(chunk)
+        index = cursor
+    return parts
+
+
 def _query_terms(query: str) -> tuple[str, ...]:
     normalized = query.lower().strip()
-    terms: set[str] = {
-        word for word in _ASCII_WORD.findall(normalized) if len(word) >= 2
-    }
-    for sequence in _CHINESE_SEQUENCE.findall(normalized):
-        if sequence not in _IGNORED_TERMS and len(sequence) <= 8:
+    if not normalized:
+        return ()
+    expanded = _strip_stopwords(_expand_query(normalized))
+    terms: set[str] = {normalized}
+    terms.update(word for word in _ASCII_WORD.findall(expanded) if len(word) >= 2)
+    for sequence in _CHINESE_SEQUENCE.findall(expanded):
+        terms.update(_segment_chinese(sequence))
+        if sequence not in _IGNORED_TERMS and 2 <= len(sequence) <= 8:
             terms.add(sequence)
-        terms.update(
-            sequence[index:index + 2]
-            for index in range(len(sequence) - 1)
-            if sequence[index:index + 2] not in _IGNORED_TERMS
-        )
-    return tuple(sorted(terms, key=lambda value: (-len(value), value)))
+    return tuple(sorted((term for term in terms if term), key=lambda value: (-len(value), value)))
+
+
+def _score_fields(fields: list[tuple[str, float, bool]], token: str) -> float:
+    best = 0.0
+    for field, weight, allow_fuzzy in fields:
+        ratio = _field_match_ratio(field, token, allow_fuzzy)
+        if ratio > 0:
+            best = max(best, ratio * weight)
+    return best
 
 
 def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> float:
@@ -307,27 +457,35 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
     summary = resource.summary.lower()
     content = resource.content.lower()
     search_text = resource.search_text.lower()
-    normalized_query = "".join(query.lower().split())
-    normalized_search = "".join(search_text.split())
+    source = resource.source.lower()
+    full = " ".join(query.lower().split())
+    fields = [
+        (title, 100.0, True),
+        (tags, 58.0, False),
+        (category, 44.0, False),
+        (source, 32.0, False),
+        (summary, 20.0, False),
+        (content, 16.0, False),
+        (search_text, 12.0, False),
+    ]
 
-    score = 0.0
-    if normalized_query and normalized_query in normalized_search:
-        score += 30.0
-    for term in terms:
-        length_bonus = min(len(term), 6) * 0.5
-        if term in title:
-            score += 12.0 + length_bonus
-        if term in category:
-            score += 9.0 + length_bonus
-        if term in tags:
-            score += 7.0 + length_bonus
-        if term in summary:
-            score += 4.0 + length_bonus
-        if term in content:
-            score += 2.0
-        elif term in search_text:
-            score += 1.0
-    return score + max(resource.relevance_score, 0.0) * 0.05
+    full_score = _score_fields(fields, full) * 10.0
+    extra_terms = [term for term in terms if term != full]
+    scoring_terms = extra_terms or list(terms)
+    term_score = 0.0
+    matched = 0
+    for term in scoring_terms:
+        length_bonus = min(max(len(term), 2), 6) / 3
+        value = _score_fields(fields, term) * length_bonus
+        if value > 0:
+            matched += 1
+            term_score += value
+    coverage = matched / len(scoring_terms) if scoring_terms else 0.0
+    strong = full_score >= 280 or term_score >= 70
+    covered = coverage >= 0.5 and term_score > 0
+    if not strong and not covered and full_score <= 0:
+        return 0.0
+    return full_score + term_score * (0.45 + 0.55 * coverage) + max(resource.relevance_score, 0.0) * 8.0
 
 
 def _normalize_url(value: str) -> str:
@@ -346,6 +504,12 @@ def _string_tuple(value: object) -> tuple[str, ...]:
 
 def _number(value: object) -> float:
     return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _weight(row: dict[str, object]) -> float:
+    if isinstance(row.get("weight"), (int, float)):
+        return float(row["weight"])
+    return _number(row.get("relevance_score"))
 
 
 def _positive_int(value: object) -> int:

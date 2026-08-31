@@ -60,8 +60,10 @@ the adapter derives them without modifying the source data:
 - `id`: first 16 characters of the URL MD5 hash.
 - `search_text`: title, category, tags, summary, content, source, and access method.
 
-Search weights title, category, tags, summary, content, and `search_text`, and
-supports both the 32 source categories and the frontend's grouped categories.
+Search uses the same weighted fuzzy matcher as the static frontend: campus
+synonyms, pinyin aliases, edit-distance typos, field weights, and the
+`weight` / `relevance_score` stored on each record. It supports both the 32
+source categories and the frontend's grouped categories.
 Every clickable result comes from this dataset. Unknown URLs emitted by a model
 are removed from the answer.
 

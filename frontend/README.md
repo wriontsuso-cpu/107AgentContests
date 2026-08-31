@@ -26,6 +26,7 @@ pnpm test:e2e
 ## 数据边界
 
 - 本地开发模式直接读取 `src/data/raw/resources.json` 的 1295 条数据，因此分类计数、二级筛选、分页和详情保持一致。
+- 搜索为加权模糊匹配：同义词 / 拼音 / 1 字编辑距离，并结合每条资源的 `weight`。词表在 `src/data/raw/searchRanking.json`。
 - 生产构建不引入完整 JSON；未连接后端时，`src/data/mockResources.ts` 提供覆盖八类与主要页面状态的小型兜底集。
 - `src/data/resourceAdapter.ts` 负责把当前旧字段和未来 API 字段统一成 `Resource`。
 - 更新爬虫结果时可以替换快照；只要保留 `articles` 数组或直接提供数组，页面无需修改。

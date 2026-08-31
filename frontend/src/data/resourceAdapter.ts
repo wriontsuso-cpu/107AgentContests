@@ -10,6 +10,13 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function asWeight(...values: unknown[]): number {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return 0
+}
+
 function optionalString(value: unknown): string | undefined {
   return asString(value) || undefined
 }
@@ -83,7 +90,7 @@ export function adaptResource(input: unknown): Resource | null {
     howTo: optionalString(row.how_to),
     accessType: optionalString(row.access_type),
     kind: optionalString(row.kind),
-    relevanceScore: typeof row.relevance_score === 'number' ? row.relevance_score : 0,
+    relevanceScore: asWeight(row.weight, row.relevance_score),
     searchText: asString(row.search_text) || [title, summary, tags.join(' '), sourceLabel].join(' '),
   }
 }

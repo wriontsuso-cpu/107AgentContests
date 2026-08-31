@@ -1,8 +1,8 @@
 // Small, representative browser demo set. The complete 1,295-record catalog is owned by the backend.
 export const mockResourceRows = [
-  { title: '邮箱', url: 'https://mail.ustc.edu.cn/', source: '学校邮箱', category: '资源导航', tags: ['邮箱', '公共服务'] },
-  { title: '教务系统', url: 'https://jw.ustc.edu.cn/', source: '教务系统', category: '资源导航', tags: ['教务', '办事'] },
-  { title: '学习空间预约', url: 'http://lib.ustc.edu.cn/?p=30439', source: '图书馆', category: '图书馆资源', summary: '预约图书馆学习空间与研修间。', tags: ['图书馆资源', '预约'] },
+  { title: '邮箱', url: 'https://mail.ustc.edu.cn/', source: '学校邮箱', category: '资源导航', tags: ['邮箱', '公共服务'], weight: 9.2, relevance_score: 9.2, search_text: '邮箱 邮件 email mail 学生邮箱 栏目：资源导航' },
+  { title: '教务系统', url: 'https://jw.ustc.edu.cn/', source: '教务系统', category: '资源导航', tags: ['教务', '办事'], weight: 9.4, relevance_score: 9.4, search_text: '教务系统 选课 成绩 课表 教务处 jwxt 栏目：资源导航' },
+  { title: '学习空间预约', url: 'http://lib.ustc.edu.cn/?p=30439', source: '图书馆', category: '图书馆资源', summary: '预约图书馆学习空间与研修间。', tags: ['图书馆资源', '预约'], weight: 9, relevance_score: 9, search_text: '学习空间预约 座位 占座 研修间 自习室 图书馆座位 预约座位 栏目：图书馆资源' },
   { title: '本科生竞赛成果申报及成绩选择', url: 'https://www.teach.ustc.edu.cn/notice/notice-teaching/20079.html', source: '教务处', category: '教务通知', tags: ['教务通知', '竞赛'] },
   { title: '中国科大揭示力加载调控细胞伪足稳定性的生物力学机制', url: 'https://news.ustc.edu.cn/info/1048/95196.htm', source: '新闻网-科研进展', category: '学术科研', tags: ['学术科研'] },
   { title: '中国科大通过晶体对称性破缺实现闪锌矿量子点定向发光', url: 'https://news.ustc.edu.cn/info/1048/95204.htm', source: '新闻网-科研进展', category: '学术科研', tags: ['学术科研'] },

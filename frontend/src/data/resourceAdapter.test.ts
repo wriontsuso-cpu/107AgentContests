@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { adaptResource, adaptResourceCollection } from './resourceAdapter'
 
 describe('adaptResource', () => {
+  it('prefers an explicit retrieval weight over a stale relevance score', () => {
+    const resource = adaptResource({
+      title: '邮箱',
+      url: 'https://mail.ustc.edu.cn/',
+      category: '资源导航',
+      weight: 8.5,
+      relevance_score: 0,
+    })
+
+    expect(resource?.relevanceScore).toBe(8.5)
+  })
+
   it('generates a stable id when crawler data has no id', () => {
     const row = { title: '教务系统', url: 'https://jw.ustc.edu.cn/', category: '资源导航' }
 

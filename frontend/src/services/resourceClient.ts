@@ -30,6 +30,7 @@ export async function listResources(request: ResourceListRequest, options: Clien
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
   if (shouldUseMocks(apiBaseUrl, options.useMocks)) {
     const localResources = await loadLocalCatalog()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     return paginateResources(searchResources(localResources, request), request.page, request.pageSize ?? 12)
   }
 
