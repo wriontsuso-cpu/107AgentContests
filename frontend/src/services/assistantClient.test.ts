@@ -67,6 +67,35 @@ describe('requestAssistant', () => {
     expect(response.resources).toEqual([])
   })
 
+  it('shows a network source only after backend trust metadata is present', async () => {
+    const trustedWebResult = {
+      id: 'web-official-source',
+      title: '中国科大官方通知',
+      url: 'https://www.ustc.edu.cn/notice',
+      category: '可信网络来源',
+      summary: '联网核验后的页面摘要',
+      source_site: 'www.ustc.edu.cn',
+      authority_label: '中国科大官方网页',
+      kind: 'web',
+    }
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ answer: '依据中国科大官方页面回答。', results: [trustedWebResult] }),
+    })
+
+    const response = await requestAssistant(
+      { message: '查询最新官方通知', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )
+
+    expect(response.resources).toEqual([expect.objectContaining({
+      title: '中国科大官方通知',
+      url: 'https://www.ustc.edu.cn/notice',
+      source: '中国科大官方网页',
+    })])
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('closes the active backend session when the conversation is reset', async () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, status: 200 })
 

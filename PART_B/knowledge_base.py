@@ -39,9 +39,8 @@ _ASCII_WORD = re.compile(r"[a-z0-9]+")
 _IGNORED_TERMS = {
     "一个", "一些", "什么", "怎么", "怎样", "如何", "可以", "需要", "想要", "我想",
     "了解", "相关", "资源", "一下", "是否", "有没有", "哪里", "哪个", "哪些", "帮助",
+    "的", "吗", "呢", "那", "请", "是",
 }
-
-
 @dataclass(frozen=True)
 class Resource:
     title: str
@@ -63,6 +62,25 @@ class Resource:
     source_count: int = 1
     authority_label: str = ""
     search_text: str = ""
+    snapshot_version: str = ""
+    snapshot_one_liner: str = ""
+    snapshot_description: str = ""
+    content_kind: str = ""
+    recommend_priority: str = ""
+    audience: tuple[str, ...] = ()
+    access_notes: str = ""
+    how_to_steps: tuple[str, ...] = ()
+    recommend_when: tuple[str, ...] = ()
+    do_not_recommend_when: tuple[str, ...] = ()
+    query_aliases: tuple[str, ...] = ()
+    negative_aliases: tuple[str, ...] = ()
+    supported_intents: tuple[str, ...] = ()
+    excluded_intents: tuple[str, ...] = ()
+    answerable_facts: tuple[str, ...] = ()
+    snapshot_confidence: str = ""
+    requires_live_check: bool = True
+    snapshot_enrichment: str = ""
+    url_status: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -99,13 +117,15 @@ class KnowledgeBase(ABC):
         query: str,
         limit: int,
         category: str | None = None,
+        minimum_score: float = 0.0,
     ) -> list[Resource]:
         candidates = [
             resource
             for resource in self.resources
             if self._matches_category(resource, category)
+            and resource.recommend_priority.lower() != "skip"
         ]
-        return self._rank(candidates, query)[:limit]
+        return self._rank(candidates, query, minimum_score)[:limit]
 
     def list_resources(
         self,
@@ -120,6 +140,7 @@ class KnowledgeBase(ABC):
             if self._matches_category(resource, category)
             and (not group or resource.category == group)
             and (not tag or tag in resource.tags)
+            and resource.recommend_priority.lower() != "skip"
         ]
         if query.strip():
             return self._rank(candidates, query)
@@ -172,7 +193,11 @@ class KnowledgeBase(ABC):
         return resource.category == category
 
     @staticmethod
-    def _rank(resources: list[Resource], query: str) -> list[Resource]:
+    def _rank(
+        resources: list[Resource],
+        query: str,
+        minimum_score: float = 0.0,
+    ) -> list[Resource]:
         terms = _query_terms(query)
         if not terms:
             return []
@@ -184,7 +209,7 @@ class KnowledgeBase(ABC):
         return [
             resource
             for score, resource in sorted(
-                (item for item in scored if item[0] > 0),
+                (item for item in scored if item[0] >= max(minimum_score, 0.0) and item[0] > 0),
                 key=lambda item: (-item[0], -item[1].relevance_score, item[1].title),
             )
         ]
@@ -211,8 +236,7 @@ class JsonKnowledgeBase(KnowledgeBase):
         if not self.data_path.exists():
             raise FileNotFoundError(f"Knowledge-base file not found: {self.data_path}")
 
-        payload = json.loads(self.data_path.read_text(encoding="utf-8"))
-        rows = payload.get("articles") if isinstance(payload, dict) else payload
+        rows = self._load_rows()
         if not isinstance(rows, list):
             raise ValueError("Knowledge-base JSON must contain an articles array.")
 
@@ -225,6 +249,24 @@ class JsonKnowledgeBase(KnowledgeBase):
         if not resources:
             raise ValueError("Knowledge-base JSON contains no valid resources.")
         return resources
+
+    def _load_rows(self) -> list[object]:
+        if self.data_path.suffix.lower() != ".jsonl":
+            payload = json.loads(self.data_path.read_text(encoding="utf-8"))
+            return payload.get("articles") if isinstance(payload, dict) else payload
+
+        rows: list[object] = []
+        with self.data_path.open("r", encoding="utf-8") as source:
+            for line_number, line in enumerate(source, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"Invalid JSONL at {self.data_path}:{line_number}: {error.msg}"
+                    ) from error
+        return rows
 
 
 def build_knowledge_base(config: KnowledgeBaseConfig) -> KnowledgeBase:
@@ -245,25 +287,40 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
     if not title or not url:
         return None
 
-    tags = _string_tuple(row.get("tags"))
+    snapshot_value = row.get("snapshot")
+    snapshot = snapshot_value if isinstance(snapshot_value, dict) else {}
+    intent_fit_value = snapshot.get("intent_fit")
+    intent_fit = intent_fit_value if isinstance(intent_fit_value, dict) else {}
+
+    snapshot_one_liner = _text(snapshot.get("one_liner"))
+    snapshot_description = _text(snapshot.get("description"))
+    how_to_steps = _string_tuple(snapshot.get("how_to_steps"))
+    tags = _merge_string_tuples(
+        _string_tuple(row.get("tags")),
+        _string_tuple(snapshot.get("tags_normalized")),
+    )
     related_urls = _string_tuple(row.get("related_urls"))
     category = _text(row.get("category"))
     source = _text(row.get("source"))
-    summary = _text(row.get("summary"))
-    content = _text(row.get("content"))
-    how_to = _text(row.get("how_to"))
-    search_text = _text(row.get("search_text")) or " ".join(
-        value
-        for value in (
-            title,
-            category,
-            " ".join(tags),
-            summary,
-            content,
-            source,
-            how_to,
+    summary = snapshot_one_liner or _text(row.get("summary"))
+    content = snapshot_description or _text(row.get("content"))
+    how_to = "；".join(how_to_steps) or _text(row.get("how_to"))
+    search_text = (
+        _text(row.get("search_text_positive"))
+        or _text(row.get("search_text"))
+        or " ".join(
+            value
+            for value in (
+                title,
+                category,
+                " ".join(tags),
+                summary,
+                content,
+                source,
+                how_to,
+            )
+            if value
         )
-        if value
     )
     resource_id = _text(row.get("id")) or md5(url.encode("utf-8")).hexdigest()[:16]
     source_site = _text(row.get("source_site")) or urlparse(url).netloc
@@ -291,6 +348,25 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         source_count=source_count,
         authority_label=_text(row.get("authority_label")),
         search_text=search_text,
+        snapshot_version=_text(snapshot.get("snapshot_version")),
+        snapshot_one_liner=snapshot_one_liner,
+        snapshot_description=snapshot_description,
+        content_kind=_text(snapshot.get("content_kind")),
+        recommend_priority=_text(snapshot.get("recommend_priority")),
+        audience=_string_tuple(snapshot.get("audience")),
+        access_notes=_text(snapshot.get("access_notes")),
+        how_to_steps=how_to_steps,
+        recommend_when=_string_tuple(intent_fit.get("recommend_when")),
+        do_not_recommend_when=_string_tuple(intent_fit.get("do_not_recommend_when")),
+        query_aliases=_string_tuple(snapshot.get("query_aliases")),
+        negative_aliases=_string_tuple(snapshot.get("negative_aliases")),
+        supported_intents=_string_tuple(snapshot.get("supported_intents")),
+        excluded_intents=_string_tuple(snapshot.get("excluded_intents")),
+        answerable_facts=_fact_tuple(snapshot.get("answerable_facts")),
+        snapshot_confidence=_text(snapshot.get("confidence")),
+        requires_live_check=_boolean(snapshot.get("requires_live_check"), default=True),
+        snapshot_enrichment=_text(snapshot.get("enrichment")),
+        url_status=_text(row.get("url_status")) or _text(snapshot.get("url_status_hint")),
     )
 
 
@@ -362,6 +438,12 @@ def _field_match_ratio(field: str, token: str, allow_fuzzy: bool = False) -> flo
     if token in field:
         return 0.84
     if not allow_fuzzy or len(token) < 3 or len(field) > 40:
+        return 0.0
+    token_characters = set(token)
+    if (
+        len(token_characters) >= 3
+        and len(token_characters.intersection(field)) < len(token_characters) - 1
+    ):
         return 0.0
     max_dist = 1 if len(token) <= 7 else 2
     distance = _window_distance(field, token, max_dist)
@@ -451,6 +533,16 @@ def _score_fields(fields: list[tuple[str, float, bool]], token: str) -> float:
 
 
 def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> float:
+    normalized_query = _normalize_phrase(query)
+    if any(
+        negative_alias in normalized_query
+        for negative_alias in (
+            _normalize_phrase(alias) for alias in resource.negative_aliases
+        )
+        if len(negative_alias) >= 2
+    ):
+        return 0.0
+
     title = resource.title.lower()
     category = resource.category.lower()
     tags = " ".join(resource.tags).lower()
@@ -458,9 +550,11 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
     content = resource.content.lower()
     search_text = resource.search_text.lower()
     source = resource.source.lower()
-    full = " ".join(query.lower().split())
+    aliases = " ".join(resource.query_aliases).lower()
+    full = " ".join(_strip_stopwords(query.lower()).split())
     fields = [
         (title, 100.0, True),
+        (aliases, 96.0, False),
         (tags, 58.0, False),
         (category, 44.0, False),
         (source, 32.0, False),
@@ -485,11 +579,33 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
     covered = coverage >= 0.5 and term_score > 0
     if not strong and not covered and full_score <= 0:
         return 0.0
-    return full_score + term_score * (0.45 + 0.55 * coverage) + max(resource.relevance_score, 0.0) * 8.0
+    score = (
+        full_score
+        + term_score * (0.45 + 0.55 * coverage)
+        + max(resource.relevance_score, 0.0) * 8.0
+    )
+    score += {"high": 24.0, "medium": 8.0, "low": -32.0}.get(
+        resource.recommend_priority.lower(),
+        0.0,
+    )
+    if resource.snapshot_enrichment == "llm_intent_v1":
+        score += 8.0
+    return max(score, 0.0)
+
+
+def _normalize_phrase(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
 
 
 def _normalize_url(value: str) -> str:
-    return value.strip().lower().replace("http://", "https://", 1).rstrip("/")
+    parsed = urlparse(value.strip().rstrip("）】》」』，。；、"))
+    scheme = "https" if parsed.scheme.lower() in {"http", "https"} else parsed.scheme.lower()
+    return parsed._replace(
+        scheme=scheme,
+        netloc=parsed.netloc.lower(),
+        path=parsed.path.rstrip("/"),
+        fragment="",
+    ).geturl()
 
 
 def _text(value: object) -> str:
@@ -500,6 +616,25 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     return tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+
+
+def _merge_string_tuples(*values: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item for value in values for item in value))
+
+
+def _fact_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    facts: list[str] = []
+    for item in value:
+        fact = item if isinstance(item, str) else item.get("fact") if isinstance(item, dict) else None
+        if isinstance(fact, str) and fact.strip():
+            facts.append(fact.strip())
+    return tuple(dict.fromkeys(facts))
+
+
+def _boolean(value: object, *, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
 
 
 def _number(value: object) -> float:

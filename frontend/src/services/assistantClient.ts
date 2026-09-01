@@ -41,7 +41,7 @@ interface ClientOptions {
   useMocks?: boolean
 }
 
-const ASSISTANT_REQUEST_TIMEOUT_MS = 45_000
+const ASSISTANT_REQUEST_TIMEOUT_MS = 160_000
 
 function inferCategory(message: string): ResourceCategoryId | undefined {
   const rules: [RegExp, ResourceCategoryId][] = [
@@ -132,6 +132,24 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
   if (!candidateUrl && !candidateTitle) return undefined
 
   const explicitId = asText(row.id)
+  const resultKind = asText(row.kind)
+  const authorityLabel = asText(row.authority_label)
+  const sourceSite = asText(row.source_site).toLowerCase()
+  if (resultKind === 'web' && explicitId.startsWith('web-') && isWebUrl(candidateUrl)) {
+    const candidateHost = new URL(candidateUrl).hostname.toLowerCase()
+    const trustedLabels = new Set(['中国科大官方网页', '政府官方网页', '高校官方网页', '配置允许的可信网页'])
+    const sourceMatches = sourceSite === candidateHost || candidateHost.endsWith(`.${sourceSite}`)
+    if (!trustedLabels.has(authorityLabel) || !sourceSite || !sourceMatches) return undefined
+    return {
+      id: explicitId,
+      title: candidateTitle || candidateHost,
+      summary: asText(row.summary) || '来自后端核验过的可信网络来源。',
+      category: '可信网络来源',
+      source: authorityLabel,
+      url: candidateUrl,
+    }
+  }
+
   const endpoint = explicitId
     ? `${apiBaseUrl}/api/resources/${encodeURIComponent(explicitId)}`
     : `${apiBaseUrl}/api/resources?q=${encodeURIComponent(candidateTitle)}&page=1&page_size=5`

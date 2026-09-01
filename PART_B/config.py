@@ -17,6 +17,12 @@ class LLMConfig:
     model: str
     base_url: str | None = None
     timeout_seconds: int = 30
+    web_search_enabled: bool = False
+    trusted_web_domains: tuple[str, ...] = (
+        "ustc.edu.cn",
+        "edu.cn",
+        "gov.cn",
+    )
 
 
 @dataclass(frozen=True)
@@ -26,6 +32,7 @@ class KnowledgeBaseConfig:
     endpoint: str | None = None
     api_key: str = ""
     top_k: int = 5
+    minimum_score: float = 28.0
 
 
 @dataclass(frozen=True)
@@ -55,7 +62,28 @@ def load_llm_config() -> LLMConfig:
         model=os.getenv("LLM_MODEL", "your-model-name-here"),
         base_url=os.getenv("LLM_BASE_URL") or None,
         timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "10")),
+        web_search_enabled=_environment_flag("LLM_WEB_SEARCH_ENABLED", False),
+        trusted_web_domains=tuple(
+            domain.strip().lower().lstrip(".")
+            for domain in os.getenv(
+                "LLM_TRUSTED_WEB_DOMAINS",
+                "ustc.edu.cn,edu.cn,gov.cn",
+            ).split(",")
+            if domain.strip()
+        ),
     )
+
+
+def _environment_flag(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false.")
 
 
 def load_knowledge_base_config() -> KnowledgeBaseConfig:
@@ -64,6 +92,9 @@ def load_knowledge_base_config() -> KnowledgeBaseConfig:
     top_k = int(os.getenv("KNOWLEDGE_BASE_TOP_K", "5"))
     if top_k <= 0:
         raise ValueError("KNOWLEDGE_BASE_TOP_K must be greater than 0.")
+    minimum_score = float(os.getenv("KNOWLEDGE_BASE_MIN_SCORE", "28"))
+    if minimum_score < 0:
+        raise ValueError("KNOWLEDGE_BASE_MIN_SCORE cannot be negative.")
 
     default_data_path = (
         Path(__file__).resolve().parent.parent
@@ -81,6 +112,7 @@ def load_knowledge_base_config() -> KnowledgeBaseConfig:
         endpoint=os.getenv("KNOWLEDGE_BASE_ENDPOINT") or None,
         api_key=os.getenv("KNOWLEDGE_BASE_API_KEY", ""),
         top_k=top_k,
+        minimum_score=minimum_score,
     )
 
 
