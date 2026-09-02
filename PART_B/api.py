@@ -84,6 +84,7 @@ class SessionResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     llm_provider: str
+    web_search_enabled: bool
     knowledge_base_provider: str
     resource_count: int
 
@@ -108,9 +109,11 @@ def create_app(
 
     @app.get("/api/health", response_model=HealthResponse)
     def health() -> HealthResponse:
+        llm_config = load_llm_config()
         return HealthResponse(
             status="ok",
-            llm_provider=load_llm_config().provider,
+            llm_provider=llm_config.provider,
+            web_search_enabled=llm_config.web_search_enabled,
             knowledge_base_provider=load_knowledge_base_config().provider,
             resource_count=len(service.knowledge_base.resources),
         )
@@ -140,19 +143,10 @@ def create_app(
                 conversation=request_history or session.messages,
             )
         except Exception:
-            logger.exception("LLM answer generation failed; returning database results")
-            resources = service.knowledge_base.search(
-                query,
-                limit=request.top_k,
-                category=request.category,
-            )
+            logger.exception("Answer verification failed; suppressing unverified candidates")
             result = NavigationAnswer(
-                answer=(
-                    "AI 简要回答暂时不可用，已优先按项目数据库的相关性返回资源。"
-                    if resources
-                    else "AI 服务暂时不可用，项目数据库中也没有检索到匹配资源。"
-                ),
-                resources=tuple(resources),
+                answer="AI 核实服务暂时不可用，未返回未经核实的数据库候选，请稍后重试。",
+                resources=(),
             )
 
         sessions.append_exchange(session.id, query, result.answer)

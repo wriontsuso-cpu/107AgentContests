@@ -3,16 +3,57 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import md5
+import logging
 import re
+from urllib.parse import unquote, urlparse
 
 from config import load_knowledge_base_config, load_llm_config
 from knowledge_base import KnowledgeBase, Resource, build_knowledge_base
-from llm_client import LLMClient, LLMRequest, build_llm_client
+from llm_client import LLMCitation, LLMClient, LLMRequest, build_llm_client
+from page_reader import HttpPageReader, PageReader, PageSnapshot
 from prompts import RESOURCE_NAVIGATION_SYSTEM_PROMPT
 
 
-_URL_PATTERN = re.compile(r"https?://[^\s<>()\]，。；、]+", re.IGNORECASE)
+_URL_PATTERN = re.compile(r"https?://[^\s<>()\]）】》」』，。；、]+", re.IGNORECASE)
 _CLARIFICATION_PATTERN = re.compile(r"[①②③④]\s*([^；。\n]+)")
+_DATABASE_VERDICT_PATTERN = re.compile(
+    r"\[\[DATABASE_VERDICT:(VERIFY|EXACT|RELATED|INSUFFICIENT)\]\]",
+    re.IGNORECASE,
+)
+_DATABASE_PRIMARY_ID_PATTERN = re.compile(
+    r"\[\[DATABASE_PRIMARY_ID:([^\]\r\n]+)\]\]",
+    re.IGNORECASE,
+)
+_DATABASE_RELATED_IDS_PATTERN = re.compile(
+    r"\[\[DATABASE_RELATED_IDS:([^\]\r\n]+)\]\]",
+    re.IGNORECASE,
+)
+_WEB_VERDICT_PATTERN = re.compile(
+    r"\[\[WEB_VERDICT:(EXACT|RELATED|INSUFFICIENT)\]\]",
+    re.IGNORECASE,
+)
+_WEB_PRIMARY_URL_PATTERN = re.compile(
+    r"\[\[WEB_PRIMARY_URL:(https?://[^\]\r\n]+)\]\]",
+    re.IGNORECASE,
+)
+_NO_TRUSTED_RESULT = "当前未检索到合适内容。"
+_RELATED_CANDIDATES_RESULT = (
+    "未找到可直接确认的唯一答案，以下仅列出相关度达到高阈值的候选资源。"
+)
+_DEFAULT_TRUSTED_WEB_DOMAINS = ("ustc.edu.cn", "edu.cn", "gov.cn")
+_NAVIGATION_INTENT_TERMS = (
+    "预约", "入口", "登录", "登陆", "报名", "申请", "办理", "下载", "查询",
+    "缴费", "支付", "打印", "补办", "续借", "借阅", "选课", "退课", "报修",
+    "充值", "绑定", "认证",
+)
+_QUERY_FILLERS = (
+    "怎么", "怎样", "如何", "哪里", "在哪", "哪个", "哪些", "什么", "一下",
+    "请问", "我想", "我要", "需要", "可以", "是否", "有没有", "相关", "资源",
+)
+_CHINESE_TEXT_PATTERN = re.compile(r"[\u4e00-\u9fff]+")
+_ASCII_TEXT_PATTERN = re.compile(r"[a-z0-9]+")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,10 +69,18 @@ class ResourceNavigationService:
         llm_client: LLMClient,
         knowledge_base: KnowledgeBase,
         retrieval_limit: int,
+        retrieval_minimum_score: float = 28.0,
+        trusted_web_domains: tuple[str, ...] = _DEFAULT_TRUSTED_WEB_DOMAINS,
+        page_reader: PageReader | None = None,
     ) -> None:
         self.llm_client = llm_client
         self.knowledge_base = knowledge_base
         self.retrieval_limit = retrieval_limit
+        self.retrieval_minimum_score = max(retrieval_minimum_score, 0.0)
+        self.trusted_web_domains = tuple(
+            domain.lower().lstrip(".") for domain in trusted_web_domains if domain
+        )
+        self.page_reader = page_reader
 
     def answer(
         self,
@@ -45,28 +94,450 @@ class ResourceNavigationService:
         if not normalized_question:
             raise ValueError("Question cannot be empty.")
 
-        retrieval_limit = min(max(limit or self.retrieval_limit, 1), 20)
+        retrieval_limit = min(max(limit or self.retrieval_limit, 1), 5)
+        candidate_pool_limit = min(max(retrieval_limit * 2, 10), 20)
         retrieval_query = self._build_retrieval_query(normalized_question, conversation)
         resources = self.knowledge_base.search(
             retrieval_query,
-            limit=retrieval_limit,
+            limit=candidate_pool_limit,
             category=category,
+            minimum_score=self.retrieval_minimum_score,
         )
+        if resources:
+            return self._answer_from_database_candidates(
+                normalized_question,
+                resources,
+                retrieval_limit,
+                conversation,
+            )
+        return self._answer_from_trusted_web(
+            normalized_question,
+            retrieval_limit,
+            conversation,
+            database_candidates_found=False,
+        )
+
+    def _answer_from_database_candidates(
+        self,
+        question: str,
+        resources: list[Resource],
+        retrieval_limit: int,
+        conversation: tuple[str, ...],
+    ) -> NavigationAnswer:
+        snapshot_answer = self._answer_from_trusted_snapshot(question, resources)
+        if snapshot_answer is not None:
+            return snapshot_answer
+
         response = self.llm_client.generate(
             LLMRequest(
                 system_prompt=RESOURCE_NAVIGATION_SYSTEM_PROMPT,
-                user_question=self._build_grounded_question(
-                    normalized_question,
+                user_question=self._build_database_verification_question(
+                    question,
                     resources,
                     conversation,
                 ),
+                web_access="none",
+                max_output_tokens=800,
             )
         )
-        answer = self._remove_unknown_urls(response.text.strip())
+        verdict = self._database_verdict(response.text)
+        answer = self._remove_database_control_markers(response.text)
+        primary_resource = self._database_primary_resource(resources, response.text)
+        logger.info(
+            "Database screening verdict=%s primary_id=%s",
+            verdict or "missing",
+            primary_resource.id if primary_resource is not None else "none",
+        )
+        if (
+            verdict in {"verify", "exact"}
+            and primary_resource is not None
+            and (answer or self.llm_client.supports_web_search)
+        ):
+            return self._answer_from_primary_database_resource(
+                question,
+                primary_resource,
+                answer,
+                retrieval_limit,
+                conversation,
+            )
+
+        related_resources = self._database_related_resources(
+            resources,
+            response.text,
+            retrieval_limit,
+        )
+        logger.info(
+            "Database screening verdict=%s primary_id=%s related_count=%d",
+            verdict or "missing",
+            primary_resource.id if primary_resource is not None else "none",
+            len(related_resources),
+        )
+        related_fallback = (
+            NavigationAnswer(
+                answer=_RELATED_CANDIDATES_RESULT,
+                resources=related_resources,
+            )
+            if verdict == "related" and related_resources
+            else None
+        )
+        return self._answer_from_trusted_web(
+            question,
+            retrieval_limit,
+            conversation,
+            database_candidates_found=True,
+            fallback=related_fallback,
+        )
+
+    @staticmethod
+    def _answer_from_trusted_snapshot(
+        question: str,
+        resources: list[Resource],
+    ) -> NavigationAnswer | None:
+        eligible_resources = tuple(
+            resource
+            for resource in resources
+            if _is_trusted_snapshot_match(question, resource)
+        )
+        if len(eligible_resources) != 1 or eligible_resources[0].id != resources[0].id:
+            return None
+
+        resource = eligible_resources[0]
+        lead = (resource.snapshot_one_liner or resource.summary).strip().rstrip("。；; ")
+        if not lead:
+            return None
+
+        facts = tuple(
+            fact.strip().rstrip("。；; ")
+            for fact in resource.answerable_facts
+            if fact.strip()
+            and _normalize_match_phrase(fact) not in _normalize_match_phrase(lead)
+        )[:3]
+        answer_parts = [f"根据当前离线资源快照：{lead}。"]
+        if facts:
+            answer_parts.append(f"关键信息：{'；'.join(facts)}。")
+        if resource.how_to_steps:
+            steps = "；".join(resource.how_to_steps[:3]).rstrip("。；; ")
+            if steps:
+                answer_parts.append(f"操作提示：{steps}。")
+        if resource.access_notes and resource.access_notes != "公开可访问":
+            answer_parts.append(f"访问说明：{resource.access_notes.rstrip('。')}。")
+
+        logger.info("Trusted snapshot fast path resource_id=%s", resource.id)
+        return NavigationAnswer(
+            answer="".join(answer_parts),
+            resources=(resource,),
+        )
+
+    def _answer_from_primary_database_resource(
+        self,
+        question: str,
+        primary_resource: Resource,
+        snapshot_answer: str,
+        retrieval_limit: int,
+        conversation: tuple[str, ...],
+    ) -> NavigationAnswer:
+        if self.page_reader is not None:
+            try:
+                snapshot = self.page_reader.read(primary_resource.url)
+            except Exception:
+                logger.exception(
+                    "Direct database page read failed for resource_id=%s",
+                    primary_resource.id,
+                )
+            else:
+                if self._is_direct_navigation_entry(
+                    question,
+                    primary_resource,
+                    snapshot,
+                ):
+                    return NavigationAnswer(
+                        answer=self._direct_navigation_answer(
+                            primary_resource,
+                            snapshot,
+                        ),
+                        resources=(primary_resource,),
+                    )
+                try:
+                    response = self.llm_client.generate(
+                        LLMRequest(
+                            system_prompt=RESOURCE_NAVIGATION_SYSTEM_PROMPT,
+                            user_question=self._build_fetched_page_verification_question(
+                                question,
+                                primary_resource,
+                                snapshot,
+                                conversation,
+                            ),
+                            web_access="none",
+                            max_output_tokens=1600,
+                        )
+                    )
+                except Exception:
+                    logger.exception(
+                        "Fetched database page verification failed for resource_id=%s",
+                        primary_resource.id,
+                    )
+                else:
+                    verdict = self._database_verdict(response.text)
+                    verified_primary = self._database_primary_resource(
+                        [primary_resource],
+                        response.text,
+                    )
+                    verified_answer = self._remove_database_control_markers(response.text)
+                    logger.info(
+                        "Fetched page verification verdict=%s resource_id=%s",
+                        verdict or "missing",
+                        primary_resource.id,
+                    )
+                    if (
+                        verdict == "exact"
+                        and verified_primary is not None
+                        and verified_answer
+                    ):
+                        return self._database_exact_answer(
+                            primary_resource,
+                            verified_answer,
+                            page_verified=True,
+                            allowed_urls=(snapshot.final_url,),
+                        )
+                    return self._answer_from_trusted_web(
+                        question,
+                        retrieval_limit,
+                        conversation,
+                        database_candidates_found=True,
+                    )
+
+        if not self.llm_client.supports_web_search:
+            if snapshot_answer:
+                return self._database_exact_answer(primary_resource, snapshot_answer, ())
+            return NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+
+        try:
+            response = self.llm_client.generate(
+                LLMRequest(
+                    system_prompt=RESOURCE_NAVIGATION_SYSTEM_PROMPT,
+                    user_question=self._build_primary_verification_question(
+                        question,
+                        primary_resource,
+                        conversation,
+                    ),
+                    web_access="open_known_urls",
+                    max_output_tokens=1600,
+                )
+            )
+        except Exception:
+            logger.exception("Primary database page verification failed; trying trusted web search")
+        else:
+            verdict = self._database_verdict(response.text)
+            verified_primary = self._database_primary_resource(
+                [primary_resource],
+                response.text,
+            )
+            verified_answer = self._remove_database_control_markers(response.text)
+            visited_primary = self._visited_database_resources(
+                [primary_resource],
+                response.citations,
+            )
+            logger.info(
+                "Primary page verification verdict=%s resource_id=%s visited=%s",
+                verdict or "missing",
+                primary_resource.id,
+                bool(visited_primary),
+            )
+            if (
+                verdict == "exact"
+                and verified_primary is not None
+                and verified_answer
+                and visited_primary
+            ):
+                return self._database_exact_answer(
+                    primary_resource,
+                    verified_answer,
+                    response.citations,
+                )
+
+        return self._answer_from_trusted_web(
+            question,
+            retrieval_limit,
+            conversation,
+            database_candidates_found=True,
+        )
+
+    def _database_exact_answer(
+        self,
+        primary_resource: Resource,
+        answer: str,
+        citations: tuple[LLMCitation, ...] = (),
+        *,
+        page_verified: bool = False,
+        allowed_urls: tuple[str, ...] = (),
+    ) -> NavigationAnswer:
+        answer = self._remove_unknown_urls(
+            answer,
+            (primary_resource.url, *allowed_urls),
+        )
+        if citations:
+            page_verified = page_verified or bool(self._visited_database_resources(
+                [primary_resource],
+                citations,
+            ))
+        if not page_verified:
+            answer = (
+                "网页实时访问未能确认，以下内容仅依据项目数据库快照：\n"
+                f"{answer}"
+            )
         return NavigationAnswer(
             answer=answer,
-            resources=tuple(resources),
+            resources=(primary_resource,),
             clarifications=self._extract_clarifications(answer),
+        )
+
+    def _answer_from_trusted_web(
+        self,
+        question: str,
+        retrieval_limit: int,
+        conversation: tuple[str, ...],
+        *,
+        database_candidates_found: bool,
+        fallback: NavigationAnswer | None = None,
+    ) -> NavigationAnswer:
+        if not self.llm_client.supports_web_search:
+            return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+
+        try:
+            response = self.llm_client.generate(
+                LLMRequest(
+                    system_prompt=RESOURCE_NAVIGATION_SYSTEM_PROMPT,
+                    user_question=self._build_web_search_question(
+                        question,
+                        conversation,
+                        database_candidates_found=database_candidates_found,
+                    ),
+                    web_access="search_web",
+                    max_output_tokens=2000,
+                )
+            )
+        except Exception:
+            if fallback is None:
+                raise
+            logger.exception("Web search failed; returning high-relevance database candidates")
+            return fallback
+        web_resources = self._trusted_web_resources(
+            response.citations,
+            retrieval_limit,
+        )
+        if not web_resources:
+            return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+        web_verdict = self._web_verdict(response.text)
+        logger.info(
+            "Trusted web verdict=%s trusted_resource_count=%d",
+            web_verdict or "missing",
+            len(web_resources),
+        )
+        if web_verdict not in {"exact", "related"}:
+            return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+        selected_resources = web_resources
+        if web_verdict == "exact":
+            primary_resource = self._web_primary_resource(web_resources, response.text)
+            if primary_resource is None:
+                return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+            selected_resources = (primary_resource,)
+        allowed_urls = tuple(resource.url for resource in selected_resources)
+        answer = self._remove_web_control_markers(response.text)
+        answer = self._remove_unknown_urls(answer, allowed_urls)
+        if not answer or _NO_TRUSTED_RESULT in answer:
+            return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+        return NavigationAnswer(
+            answer=answer,
+            resources=selected_resources,
+            clarifications=self._extract_clarifications(answer),
+        )
+
+    @staticmethod
+    def _database_verdict(answer: str) -> str | None:
+        match = _DATABASE_VERDICT_PATTERN.search(answer)
+        return match.group(1).lower() if match else None
+
+    @staticmethod
+    def _remove_database_control_markers(answer: str) -> str:
+        without_verdict = _DATABASE_VERDICT_PATTERN.sub("", answer)
+        without_primary = _DATABASE_PRIMARY_ID_PATTERN.sub("", without_verdict)
+        return _DATABASE_RELATED_IDS_PATTERN.sub("", without_primary).strip()
+
+    @staticmethod
+    def _database_primary_resource(
+        resources: list[Resource],
+        answer: str,
+    ) -> Resource | None:
+        match = _DATABASE_PRIMARY_ID_PATTERN.search(answer)
+        if not match:
+            return None
+        primary_id = match.group(1).strip()
+        return next((resource for resource in resources if resource.id == primary_id), None)
+
+    @staticmethod
+    def _database_related_resources(
+        resources: list[Resource],
+        answer: str,
+        limit: int,
+    ) -> tuple[Resource, ...]:
+        match = _DATABASE_RELATED_IDS_PATTERN.search(answer)
+        if not match:
+            return ()
+        requested_ids = tuple(
+            dict.fromkeys(
+                resource_id.strip()
+                for resource_id in match.group(1).split(",")
+                if resource_id.strip()
+            )
+        )
+        resources_by_id = {resource.id: resource for resource in resources}
+        return tuple(
+            resources_by_id[resource_id]
+            for resource_id in requested_ids
+            if resource_id in resources_by_id
+        )[:limit]
+
+    @staticmethod
+    def _web_verdict(answer: str) -> str | None:
+        match = _WEB_VERDICT_PATTERN.search(answer)
+        return match.group(1).lower() if match else None
+
+    @staticmethod
+    def _remove_web_control_markers(answer: str) -> str:
+        without_verdict = _WEB_VERDICT_PATTERN.sub("", answer)
+        return _WEB_PRIMARY_URL_PATTERN.sub("", without_verdict).strip()
+
+    def _web_primary_resource(
+        self,
+        resources: tuple[Resource, ...],
+        answer: str,
+    ) -> Resource | None:
+        match = _WEB_PRIMARY_URL_PATTERN.search(answer)
+        if not match:
+            return None
+        primary_url = self._normalize_url(match.group(1).strip())
+        return next(
+            (
+                resource
+                for resource in resources
+                if self._normalize_url(resource.url) == primary_url
+            ),
+            None,
+        )
+
+    def _visited_database_resources(
+        self,
+        resources: list[Resource],
+        citations: tuple[LLMCitation, ...],
+    ) -> tuple[Resource, ...]:
+        visited_urls = {
+            self._normalize_url(citation.url)
+            for citation in citations
+        }
+        return tuple(
+            resource
+            for resource in resources
+            if self._normalize_url(resource.url) in visited_urls
         )
 
     @staticmethod
@@ -79,56 +550,261 @@ class ResourceNavigationService:
         return " ".join((*previous_user_messages, question)).strip()
 
     @staticmethod
-    def _build_grounded_question(
+    def _is_direct_navigation_entry(
+        question: str,
+        resource: Resource,
+        snapshot: PageSnapshot,
+    ) -> bool:
+        lowered_question = question.lower()
+        intents = tuple(
+            term for term in _NAVIGATION_INTENT_TERMS if term in lowered_question
+        )
+        if not intents:
+            return False
+
+        evidence = " ".join((
+            resource.title,
+            snapshot.title,
+            snapshot.text[:2000],
+            unquote(snapshot.final_url),
+        )).lower()
+        if not any(intent in evidence for intent in intents):
+            return False
+
+        cleaned_question = lowered_question
+        for term in (*intents, *_QUERY_FILLERS):
+            cleaned_question = cleaned_question.replace(term, " ")
+        topic_terms: set[str] = {
+            word
+            for word in _ASCII_TEXT_PATTERN.findall(cleaned_question)
+            if len(word) >= 2
+        }
+        for sequence in _CHINESE_TEXT_PATTERN.findall(cleaned_question):
+            if len(sequence) >= 2:
+                topic_terms.add(sequence)
+                topic_terms.update(
+                    sequence[index:index + 2]
+                    for index in range(len(sequence) - 1)
+                )
+        return bool(topic_terms) and any(term in evidence for term in topic_terms)
+
+    @staticmethod
+    def _direct_navigation_answer(
+        resource: Resource,
+        snapshot: PageSnapshot,
+    ) -> str:
+        details = snapshot.text[:240].strip().rstrip("。；; ")
+        answer = f"已实时核实：该页面是“{resource.title}”入口。"
+        if details:
+            answer += f"页面当前显示：{details}。"
+        return f"{answer}请打开下方资源并按页面提示操作。"
+
+    @staticmethod
+    def _build_database_verification_question(
         question: str,
         resources: list[Resource],
         conversation: tuple[str, ...],
     ) -> str:
         history = "\n".join(conversation[-6:]) or "无"
-        if not resources:
-            return (
-                f"最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
-                "数据库没有检索到可靠资源。不要提供或猜测任何链接；请简短说明未找到，"
-                "并在意图不明确时提出一个带 2 至 4 个选项的引导式问题。"
-            )
-
         resource_blocks = []
         for index, resource in enumerate(resources, start=1):
-            resource_blocks.append(
-                "\n".join(
-                    (
-                        f"[数据库资源 {index}]",
-                        f"标题：{resource.title}",
-                        f"URL：{resource.url}",
-                        f"栏目：{resource.category}",
-                        f"来源：{resource.source}",
-                        f"权威标签：{resource.authority_label or '数据未提供'}",
-                        f"摘要：{resource.summary or '数据未提供'}",
-                        f"获取方式：{resource.how_to or '数据未提供'}",
-                        f"费用：{resource.cost or '数据未提供'}",
-                        f"标签：{'、'.join(resource.tags) or '数据未提供'}",
-                        f"正文摘录：{(resource.content or '数据未提供')[:800]}",
-                    )
-                )
-            )
+            block_lines = [
+                f"[数据库资源 {index}]",
+                f"资源 ID：{resource.id}",
+                f"标题：{resource.title}",
+                f"URL：{resource.url}",
+                f"栏目：{resource.category}",
+                f"来源：{resource.source}",
+                f"权威标签：{resource.authority_label or '数据未提供'}",
+                f"摘要：{(resource.summary or '数据未提供')[:400]}",
+                f"获取方式：{(resource.how_to or '数据未提供')[:300]}",
+                f"费用：{resource.cost or '数据未提供'}",
+                f"标签：{'、'.join(resource.tags) or '数据未提供'}",
+                f"正文摘录：{(resource.content or '数据未提供')[:600]}",
+            ]
+            if resource.snapshot_version:
+                block_lines.extend((
+                    f"快照推荐优先级：{resource.recommend_priority or '数据未提供'}",
+                    f"快照可信度：{resource.snapshot_confidence or '数据未提供'}",
+                    f"是否要求实时核验：{'是' if resource.requires_live_check else '否'}",
+                    f"典型匹配场景：{'；'.join(resource.recommend_when[:4]) or '数据未提供'}",
+                    f"不应推荐场景：{'；'.join(resource.do_not_recommend_when[:4]) or '数据未提供'}",
+                    f"正向检索别名：{'、'.join(resource.query_aliases[:8]) or '数据未提供'}",
+                    f"负向消歧别名：{'、'.join(resource.negative_aliases[:6]) or '数据未提供'}",
+                    f"快照可回答事实：{'；'.join(resource.answerable_facts[:4])[:600] or '数据未提供'}",
+                ))
+            resource_blocks.append("\n".join(block_lines))
 
         database_context = "\n\n".join(resource_blocks)
+        exact_urls = "\n".join(f"- {resource.url}" for resource in resources)
         return (
-            f"最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
-            "以下内容来自本项目的权威资源数据库，是本次回答的首要且唯一资源依据。"
-            "只能推荐下列资源，只能使用下列 URL；不要补充记忆中或自行猜测的资源。\n\n"
+            f"[检索阶段] 数据库候选内容核实\n\n最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
+            "以下内容只是数据库检索召回的候选资源，不代表数据库已经命中答案。"
+            "主题、栏目、标题或关键词相关，都不能单独证明资源正文包含答案。\n\n"
             f"{database_context}\n\n"
-            "请直接给出简洁导航答案。资源卡片会由系统单独展示，因此正文重点说明推荐顺序、"
-            "适用场景和访问方法，不要重复堆砌链接。"
+            "[需要核实的数据库资源地址]\n"
+            f"{exact_urls}\n\n"
+            "本阶段只根据数据库快照进行快速筛选，不调用网页工具，也不最终宣告数据库已经命中。请找出最可能"
+            "直接回答问题、值得进入下一步网页核验的唯一主资源，或列出少量高度相关资源；不要为了凑数量而采用"
+            "其他候选。对于询问服务入口、预约、办理位置等导航问题，候选标题与功能和用户目标高度一致时，可以"
+            "选为唯一待核验资源，即使正文快照为空。仅仅主题相近、属于同一栏目或业务部门，仍不能选为唯一资源。"
+            "涉及事实、步骤、数值等内容时，必须在摘要或正文摘录中存在相应信息，不能依靠常识或模型记忆补全。\n\n"
+            "输出必须严格遵守以下格式之一：\n"
+            "1. 存在唯一待核验主资源：第一行输出 [[DATABASE_VERDICT:VERIFY]]，第二行输出 "
+            "[[DATABASE_PRIMARY_ID:资源ID]]，不要输出回答正文。资源 ID 必须逐字复制自候选列表。\n"
+            "2. 没有唯一答案，但存在高度相关资源：第一行输出 [[DATABASE_VERDICT:RELATED]]，第二行输出 "
+            "[[DATABASE_RELATED_IDS:资源ID1,资源ID2]]。只列真正有助于用户目标的 ID，按相关度排序，最多 5 个；"
+            "不要输出回答正文。\n"
+            "3. 没有高度相关资源：只输出 [[DATABASE_VERDICT:INSUFFICIENT]]，不要猜测答案或推荐候选。"
         )
 
-    def _remove_unknown_urls(self, answer: str) -> str:
+    @staticmethod
+    def _build_primary_verification_question(
+        question: str,
+        resource: Resource,
+        conversation: tuple[str, ...],
+    ) -> str:
+        history = "\n".join(conversation[-6:]) or "无"
+        return (
+            f"[检索阶段] 唯一数据库资源网页核实\n\n最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
+            f"资源 ID：{resource.id}\n标题：{resource.title}\nURL：{resource.url}\n"
+            f"数据库摘要：{resource.summary or '数据未提供'}\n"
+            f"数据库正文摘录：{(resource.content or '数据未提供')[:2000]}\n\n"
+            "只允许打开上面的确切 URL 并跟随该 URL 自身的重定向，不得搜索或采用其他来源。请核对打开后的页面"
+            "是否直接包含回答问题所需的信息。对于资源导航、预约或办理入口问题，如果最终页面本身就是用户所需"
+            "服务、登录页或功能入口，页面标题、功能和最终地址足以明确这一点，即可判定为包含答案，不要求另有说明"
+            "性正文。若核验通过，第一行输出 [[DATABASE_VERDICT:EXACT]]，第二行输出 "
+            f"[[DATABASE_PRIMARY_ID:{resource.id}]]，随后简洁概括页面并回答。若页面内容不足，只输出 "
+            "[[DATABASE_VERDICT:INSUFFICIENT]]。"
+        )
+
+    @staticmethod
+    def _build_fetched_page_verification_question(
+        question: str,
+        resource: Resource,
+        snapshot: PageSnapshot,
+        conversation: tuple[str, ...],
+    ) -> str:
+        history = "\n".join(conversation[-6:]) or "无"
+        return (
+            f"[检索阶段] 后端实时页面内容核实\n\n最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
+            f"资源 ID：{resource.id}\n数据库标题：{resource.title}\n"
+            f"数据库 URL：{resource.url}\n实际访问后的 URL：{snapshot.final_url}\n"
+            f"实时页面标题：{snapshot.title or '页面未提供'}\n\n"
+            f"[实时页面正文]\n{snapshot.text[:8000]}\n\n"
+            "上方内容由后端刚刚访问数据库 URL 并跟随其重定向后提取。不得调用网页工具或采用其他来源。"
+            "请判断该实时页面是否直接回答当前问题。对于资源导航、预约或办理入口问题，如果页面本身就是"
+            "对应服务或功能入口，即可判定为包含答案。核验通过时，第一行输出 "
+            "[[DATABASE_VERDICT:EXACT]]，第二行输出 "
+            f"[[DATABASE_PRIMARY_ID:{resource.id}]]，随后简洁总结页面并回答；否则只输出 "
+            "[[DATABASE_VERDICT:INSUFFICIENT]]。"
+        )
+
+    @staticmethod
+    def _build_web_search_question(
+        question: str,
+        conversation: tuple[str, ...],
+        *,
+        database_candidates_found: bool,
+    ) -> str:
+        history = "\n".join(conversation[-6:]) or "无"
+        database_status = (
+            "数据库召回了主题相关候选，但核实后候选内容不足以回答当前问题。"
+            if database_candidates_found
+            else "数据库没有召回达到阈值的候选资源。"
+        )
+        return (
+            f"[检索阶段] 可信网络检索\n\n最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
+            f"[数据库核实结果] {database_status}\n\n"
+            "必须使用网页搜索工具寻找能够直接支持答案的可信第一方来源。优先检索中国科学技术大学及其"
+            "职能部门官方页面；必要时再使用政府、高校或相关权威机构页面。请实际打开采用的页面并核对正文，"
+            "不能把搜索结果摘要、标题相似或业务相关当作答案证据。输出必须遵守以下格式之一：\n"
+            "1. 单一页面足以支持唯一确定答案：第一行输出 [[WEB_VERDICT:EXACT]]，第二行输出 "
+            "[[WEB_PRIMARY_URL:完整URL]]，随后简洁回答并只列这一项来源。\n"
+            "2. 没有唯一答案但存在多个高度相关来源：第一行输出 [[WEB_VERDICT:RELATED]]，随后给出简洁导航，"
+            "最多列出 5 个实际采用的来源标题和完整 URL。\n"
+            "3. 没有正文直接支持结论的可信来源：只输出 [[WEB_VERDICT:INSUFFICIENT]]。"
+        )
+
+    def _trusted_web_resources(
+        self,
+        citations: tuple[LLMCitation, ...],
+        limit: int,
+    ) -> tuple[Resource, ...]:
+        resources: list[Resource] = []
+        seen: set[str] = set()
+        for citation in citations:
+            normalized_url = self._normalize_url(citation.url)
+            parsed = urlparse(normalized_url)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            if parsed.scheme not in {"http", "https"} or not self._is_trusted_host(host):
+                continue
+            if normalized_url in seen:
+                continue
+            seen.add(normalized_url)
+            authority_label = self._web_authority_label(host)
+            resources.append(Resource(
+                id=f"web-{md5(normalized_url.encode('utf-8')).hexdigest()[:16]}",
+                title=citation.title or host,
+                url=normalized_url,
+                source=host,
+                category="可信网络来源",
+                summary="来自联网检索并通过域名可信度校验的页面。",
+                kind="web",
+                source_site=host,
+                authority_label=authority_label,
+                search_text=f"{citation.title} {host}",
+            ))
+            if len(resources) >= limit:
+                break
+        return tuple(resources)
+
+    def _is_trusted_host(self, host: str) -> bool:
+        return bool(host) and any(
+            host == domain or host.endswith(f".{domain}")
+            for domain in self.trusted_web_domains
+        )
+
+    @staticmethod
+    def _web_authority_label(host: str) -> str:
+        if host == "ustc.edu.cn" or host.endswith(".ustc.edu.cn"):
+            return "中国科大官方网页"
+        if host == "gov.cn" or host.endswith(".gov.cn"):
+            return "政府官方网页"
+        if host == "edu.cn" or host.endswith(".edu.cn"):
+            return "高校官方网页"
+        return "配置允许的可信网页"
+
+    def _remove_unknown_urls(
+        self,
+        answer: str,
+        allowed_urls: tuple[str, ...] = (),
+    ) -> str:
+        normalized_allowed = {
+            self._normalize_url(url)
+            for url in allowed_urls
+        }
         return _URL_PATTERN.sub(
             lambda match: match.group(0)
-            if self.knowledge_base.is_known_url(match.group(0))
+            if (
+                self.knowledge_base.is_known_url(match.group(0))
+                or self._normalize_url(match.group(0)) in normalized_allowed
+            )
             else "（未收录链接已移除）",
             answer,
         )
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        value = url.strip().rstrip("）】》」』，。；、")
+        parsed = urlparse(value)
+        scheme = "https" if parsed.scheme.lower() in {"http", "https"} else parsed.scheme.lower()
+        return parsed._replace(
+            scheme=scheme,
+            netloc=parsed.netloc.lower(),
+            path=parsed.path.rstrip("/"),
+            fragment="",
+        ).geturl()
 
     @staticmethod
     def _extract_clarifications(answer: str) -> tuple[str, ...]:
@@ -141,6 +817,63 @@ class ResourceNavigationService:
         )[:4]
 
 
+def _is_trusted_snapshot_match(question: str, resource: Resource) -> bool:
+    if (
+        not resource.snapshot_version
+        or resource.snapshot_enrichment != "llm_intent_v1"
+        or resource.recommend_priority.lower() != "high"
+        or resource.snapshot_confidence.lower() != "high"
+        or resource.requires_live_check
+        or resource.url_status.lower() != "reachable"
+        or resource.content_kind not in {"入口", "流程", "权益"}
+        or not resource.answerable_facts
+    ):
+        return False
+
+    normalized_question = _normalize_match_phrase(question)
+    if not normalized_question:
+        return False
+    if any(
+        _negative_phrase_matches(normalized_question, alias)
+        for alias in resource.negative_aliases
+    ):
+        return False
+    return any(
+        _strong_phrase_matches(normalized_question, phrase)
+        for phrase in (resource.title, *resource.query_aliases)
+    )
+
+
+def _strong_phrase_matches(normalized_question: str, phrase: str) -> bool:
+    normalized_phrase = _normalize_match_phrase(phrase)
+    return (
+        min(len(normalized_question), len(normalized_phrase)) >= 4
+        and (
+            normalized_question in normalized_phrase
+            or normalized_phrase in normalized_question
+        )
+    )
+
+
+def _negative_phrase_matches(normalized_question: str, phrase: str) -> bool:
+    normalized_phrase = _normalize_match_phrase(phrase)
+    if not normalized_phrase:
+        return False
+    if normalized_question == normalized_phrase:
+        return True
+    return (
+        min(len(normalized_question), len(normalized_phrase)) >= 4
+        and (
+            normalized_question in normalized_phrase
+            or normalized_phrase in normalized_question
+        )
+    )
+
+
+def _normalize_match_phrase(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
+
+
 def build_navigation_service() -> ResourceNavigationService:
     llm_config = load_llm_config()
     knowledge_base_config = load_knowledge_base_config()
@@ -148,4 +881,9 @@ def build_navigation_service() -> ResourceNavigationService:
         llm_client=build_llm_client(llm_config),
         knowledge_base=build_knowledge_base(knowledge_base_config),
         retrieval_limit=knowledge_base_config.top_k,
+        retrieval_minimum_score=knowledge_base_config.minimum_score,
+        trusted_web_domains=llm_config.trusted_web_domains,
+        page_reader=HttpPageReader(
+            timeout_seconds=min(max(llm_config.timeout_seconds, 1), 20),
+        ),
     )

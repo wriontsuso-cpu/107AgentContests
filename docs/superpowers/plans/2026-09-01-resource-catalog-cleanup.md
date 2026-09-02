@@ -33,7 +33,7 @@ Assert that the source contains 12,882 rows, all rows have `url_status`, `url_ht
 
 - [ ] **Step 3: Run the script tests and observe the expected projection failure**
 
-Run: `python -m unittest scripts.tests.test_apply_resource_weights -v`  
+Run: `python -m unittest scripts.tests.test_apply_resource_weights -v`
 Expected: FAIL because the current pipeline neither filters audit failures nor projects audit fields.
 
 ### Task 2: Implement deterministic publication decisions
@@ -58,7 +58,7 @@ Add local-file cases using a temporary repository root: existing relative files 
 
 - [ ] **Step 2: Run the policy tests and verify failure**
 
-Run: `python -m unittest scripts.tests.test_apply_resource_weights.FrontendProjectionTests -v`  
+Run: `python -m unittest scripts.tests.test_apply_resource_weights.FrontendProjectionTests -v`
 Expected: FAIL because `publication_exclusion_reason` does not exist.
 
 - [ ] **Step 3: Implement the minimal policy**
@@ -136,7 +136,7 @@ Add `url_status`, `url_http`, `url_err`, and `url_checked_at` to `FRONTEND_FIELD
 
 - [ ] **Step 4: Generate the files**
 
-Run: `python scripts/apply_resource_weights.py`  
+Run: `python scripts/apply_resource_weights.py`
 Expected: output includes retained count plus a non-empty exclusion breakdown.
 
 - [ ] **Step 5: Replace hard-coded metadata consumption**
@@ -214,4 +214,3 @@ pnpm build
 - [ ] **Step 3: Perform final consistency checks**
 
 Confirm both authoritative JSON files and the frontend snapshot have identical ordered IDs, no excluded status remains, category totals equal the actual catalog, and no audit/report code performs a new full network scan.
-

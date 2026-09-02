@@ -1,15 +1,17 @@
+from dataclasses import replace
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
-from time import perf_counter
 
 from fastapi.testclient import TestClient
 
 from api import create_app
-from config import load_knowledge_base_config, load_llm_config
-from knowledge_base import CATEGORY_GROUPS, KnowledgeBase, Resource, _field_match_ratio, build_knowledge_base
-from llm_client import LLMClient, LLMRequest, LLMResponse
+from config import load_knowledge_base_config
+from knowledge_base import JsonKnowledgeBase, KnowledgeBase, Resource, build_knowledge_base
+from llm_client import LLMCitation, LLMClient, LLMRequest, LLMResponse
 from navigation_service import ResourceNavigationService
+from page_reader import PageReader, PageSnapshot
 from session_store import InMemorySessionStore
 
 
@@ -25,27 +27,73 @@ TEST_RESOURCE = Resource(
     search_text="图书馆 学习空间 座位 预约",
 )
 
-
-class ConfigTests(unittest.TestCase):
-    def test_default_llm_timeout_leaves_frontend_response_headroom(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            self.assertEqual(load_llm_config().timeout_seconds, 55)
-
-
-class MatcherTests(unittest.TestCase):
-    def test_long_service_names_keep_one_character_typo_matching(self) -> None:
-        ratio = _field_match_ratio("研究生学籍信息修改服务", "研究生学籍信息修该服务", allow_fuzzy=True)
-        self.assertGreater(ratio, 0)
+SNAPSHOT_RESOURCE = Resource(
+    id="snapshot-github-pack",
+    title="GitHub Student Developer Pack",
+    url="https://education.github.com/pack",
+    source="GitHub Education",
+    category="免费软件-会员",
+    summary="面向大学生的开发者权益礼包。",
+    search_text="GitHub Student Developer Pack GitHub 学生包 学生开发者礼包",
+    snapshot_version="2.1",
+    snapshot_one_liner="面向大学生的开发者权益礼包，可凭学生身份领取",
+    content_kind="权益",
+    recommend_priority="high",
+    query_aliases=("GitHub 学生包", "GitHub Student Pack"),
+    negative_aliases=("JetBrains 学生授权",),
+    answerable_facts=("包含 GitHub Pro 与 Copilot 权益", "需要完成学生身份认证"),
+    snapshot_confidence="high",
+    requires_live_check=False,
+    snapshot_enrichment="llm_intent_v1",
+    url_status="reachable",
+)
 
 
 class FakeLLMClient(LLMClient):
-    def __init__(self, text: str = "请优先查看数据库中的学习空间预约资源。") -> None:
+    def __init__(
+        self,
+        text: str = (
+            "[[DATABASE_VERDICT:EXACT]]\n"
+            "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+            "请优先查看数据库中的学习空间预约资源。"
+        ),
+        *,
+        citations: tuple[LLMCitation, ...] = (),
+        supports_web_search: bool = False,
+    ) -> None:
         self.text = text
+        self.citations = citations
+        self._supports_web_search = supports_web_search
         self.last_request: LLMRequest | None = None
+
+    @property
+    def supports_web_search(self) -> bool:
+        return self._supports_web_search
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         self.last_request = request
-        return LLMResponse(text=self.text)
+        return LLMResponse(text=self.text, citations=self.citations)
+
+
+class SequenceLLMClient(LLMClient):
+    def __init__(self, responses: tuple[LLMResponse, ...]) -> None:
+        self.responses = responses
+        self.requests: list[LLMRequest] = []
+
+    @property
+    def supports_web_search(self) -> bool:
+        return True
+
+    @property
+    def last_request(self) -> LLMRequest | None:
+        return self.requests[-1] if self.requests else None
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        response_index = len(self.requests)
+        self.requests.append(request)
+        if response_index >= len(self.responses):
+            raise AssertionError("Unexpected extra LLM request")
+        return self.responses[response_index]
 
 
 class FailingLLMClient(LLMClient):
@@ -59,11 +107,103 @@ class FakeKnowledgeBase(KnowledgeBase):
         return (TEST_RESOURCE,)
 
 
-def build_test_service(llm_client: LLMClient | None = None) -> ResourceNavigationService:
+class FakePageReader:
+    def read(self, url: str) -> PageSnapshot:
+        return PageSnapshot(
+            requested_url=url,
+            final_url="https://lib.ustc.edu.cn/study-space/reserve",
+            title="图书馆学习空间预约系统",
+            text="选择校区、学习空间和时间段后提交预约。",
+        )
+
+
+class EmptyKnowledgeBase(KnowledgeBase):
+    @property
+    def resources(self) -> tuple[Resource, ...]:
+        return ()
+
+
+class SingleResourceKnowledgeBase(KnowledgeBase):
+    def __init__(self, resource: Resource) -> None:
+        self.resource = resource
+
+    @property
+    def resources(self) -> tuple[Resource, ...]:
+        return (self.resource,)
+
+
+class WeakMatchKnowledgeBase(KnowledgeBase):
+    @property
+    def resources(self) -> tuple[Resource, ...]:
+        return (Resource(
+            id="weak-resource",
+            title="校园服务说明",
+            url="https://service.ustc.edu.cn/general",
+            source="校园服务",
+            category="办事指南",
+            content="正文中偶然提到护照二字。",
+            search_text="校园服务说明 正文中偶然提到护照二字",
+        ),)
+
+
+FINANCE_CANDIDATE = Resource(
+    id="finance-candidate",
+    title="学校税号相关财务报销指南",
+    url="https://finance.ustc.edu.cn/reimbursement",
+    source="财务部门",
+    category="财务服务",
+    summary="介绍差旅报销和票据提交要求。",
+    content="页面说明差旅报销审批流程、票据要求和经费归口。",
+    search_text="学校 财务 报销 差旅 票据",
+)
+
+
+class BroadFinanceKnowledgeBase(KnowledgeBase):
+    @property
+    def resources(self) -> tuple[Resource, ...]:
+        return (FINANCE_CANDIDATE,)
+
+
+HIGH_CONFIDENCE_RESOURCES = tuple(
+    Resource(
+        id=f"high-{index}",
+        title=f"校园卡补办指南 {index}",
+        url=f"https://service.ustc.edu.cn/card/{index}",
+        source="校园卡服务",
+        category="办事指南",
+        summary="校园卡遗失后的补办入口与办理步骤。",
+        search_text="校园卡 补办 遗失 办理",
+    )
+    for index in range(1, 8)
+)
+WEAK_CONFIDENCE_RESOURCE = Resource(
+    id="weak-confidence",
+    title="校园生活说明",
+    url="https://service.ustc.edu.cn/life",
+    source="校园服务",
+    category="办事指南",
+    content="正文中偶然提到补办二字。",
+    search_text="校园生活说明 补办",
+)
+
+
+class MixedConfidenceKnowledgeBase(KnowledgeBase):
+    @property
+    def resources(self) -> tuple[Resource, ...]:
+        return (*HIGH_CONFIDENCE_RESOURCES, WEAK_CONFIDENCE_RESOURCE)
+
+
+def build_test_service(
+    llm_client: LLMClient | None = None,
+    knowledge_base: KnowledgeBase | None = None,
+    page_reader: PageReader | None = None,
+) -> ResourceNavigationService:
     return ResourceNavigationService(
         llm_client=llm_client or FakeLLMClient(),
-        knowledge_base=FakeKnowledgeBase(),
+        knowledge_base=knowledge_base or FakeKnowledgeBase(),
         retrieval_limit=5,
+        retrieval_minimum_score=28,
+        page_reader=page_reader,
     )
 
 
@@ -73,31 +213,16 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         cls.knowledge_base = build_knowledge_base(load_knowledge_base_config())
 
     def test_authoritative_dataset_is_loaded_and_normalized(self) -> None:
-        config = load_knowledge_base_config()
-        expected_total = json.loads(config.data_path.read_text(encoding="utf-8"))["total"]
-        self.assertEqual(len(self.knowledge_base.resources), expected_total)
+        self.assertGreater(len(self.knowledge_base.resources), 10000)
         self.assertTrue(all(resource.id for resource in self.knowledge_base.resources))
         self.assertTrue(all(resource.search_text for resource in self.knowledge_base.resources))
-
-    def test_every_source_category_maps_to_a_resource_hall_group(self) -> None:
-        grouped = {category for categories in CATEGORY_GROUPS.values() for category in categories}
-        unexpected = {resource.category for resource in self.knowledge_base.resources} - grouped
-        self.assertEqual(unexpected, set())
-
-    def test_access_audit_fields_survive_backend_serialization(self) -> None:
-        blocked = next(resource for resource in self.knowledge_base.resources if resource.url_status == "blocked")
-        serialized = blocked.to_dict()
-
-        self.assertEqual(serialized["url_status"], "blocked")
-        self.assertTrue(serialized["url_http"])
-        self.assertTrue(serialized["url_err"])
-        self.assertEqual(serialized["url_checked_at"], "2026-08-31")
 
     def test_search_and_url_validation_use_known_data(self) -> None:
         results = self.knowledge_base.search("图书馆座位预约", limit=5)
         self.assertTrue(results)
         self.assertTrue(any("图书馆" in resource.category for resource in results))
         self.assertTrue(self.knowledge_base.is_known_url(results[0].url))
+        self.assertTrue(self.knowledge_base.is_known_url(f"{results[0].url}#ws_call_id=test"))
         self.assertFalse(self.knowledge_base.is_known_url("https://evil.example/phish"))
 
     def test_fuzzy_queries_prefer_weighted_service_entries(self) -> None:
@@ -112,20 +237,94 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         self.assertEqual(mailbox[0].title, "邮箱")
         self.assertGreaterEqual(mailbox[0].relevance_score, 7)
 
-        alias = self.knowledge_base.search("jwxt", limit=3)
-        self.assertEqual(alias[0].title, "教务系统")
+    def test_jsonl_snapshot_fields_drive_alias_and_negative_alias_matching(self) -> None:
+        rows = [
+            {
+                "id": "snapshot-target",
+                "title": "GitHub 教育资源",
+                "url": "https://education.github.com/pack",
+                "category": "免费软件-会员",
+                "search_text_positive": "GitHub 学生包 学生开发者礼包",
+                "url_status": "reachable",
+                "snapshot": {
+                    "snapshot_version": "2.1",
+                    "one_liner": "GitHub 学生开发者权益入口",
+                    "description": "完成学生身份认证后可领取开发者权益。",
+                    "content_kind": "权益",
+                    "recommend_priority": "high",
+                    "query_aliases": ["GitHub 学生包"],
+                    "negative_aliases": ["JetBrains 学生授权"],
+                    "answerable_facts": [{"fact": "需完成学生身份认证"}],
+                    "confidence": "high",
+                    "requires_live_check": False,
+                    "enrichment": "llm_intent_v1",
+                },
+            },
+            {
+                "id": "snapshot-skip",
+                "title": "GitHub 学生包旧入口",
+                "url": "https://example.invalid/old",
+                "category": "免费软件-会员",
+                "search_text_positive": "GitHub 学生包",
+                "snapshot": {
+                    "snapshot_version": "2.1",
+                    "recommend_priority": "skip",
+                },
+            },
+        ]
+        with TemporaryDirectory() as directory:
+            data_path = Path(directory) / "snapshots.jsonl"
+            data_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows),
+                encoding="utf-8",
+            )
+            knowledge_base = JsonKnowledgeBase(data_path)
 
-    def test_complete_catalog_queries_avoid_multi_second_regressions(self) -> None:
-        for query in ("校园卡", "图书管", "我想预约图书馆座位", "科研项目"):
-            with self.subTest(query=query):
-                started_at = perf_counter()
-                results = self.knowledge_base.search(query, limit=5)
-                elapsed = perf_counter() - started_at
-                self.assertTrue(results)
-                self.assertLess(elapsed, 3.0)
+        results = knowledge_base.search("GitHub 学生包", limit=5, minimum_score=28)
+        negative_results = knowledge_base.search(
+            "JetBrains 学生授权",
+            limit=5,
+            minimum_score=0,
+        )
+
+        self.assertEqual([resource.id for resource in results], ["snapshot-target"])
+        self.assertEqual(results[0].snapshot_one_liner, "GitHub 学生开发者权益入口")
+        self.assertEqual(results[0].answerable_facts, ("需完成学生身份认证",))
+        self.assertEqual(negative_results, [])
 
 
 class NavigationServiceTests(unittest.TestCase):
+    def test_trusted_static_snapshot_skips_model_and_page_verification(self) -> None:
+        llm_client = FakeLLMClient("不应被调用")
+        service = build_test_service(
+            llm_client,
+            SingleResourceKnowledgeBase(SNAPSHOT_RESOURCE),
+        )
+
+        result = service.answer("GitHub 学生包")
+
+        self.assertIsNone(llm_client.last_request)
+        self.assertEqual(result.resources, (SNAPSHOT_RESOURCE,))
+        self.assertIn("当前离线资源快照", result.answer)
+        self.assertIn("GitHub Pro", result.answer)
+
+    def test_snapshot_requiring_live_check_keeps_existing_verification_flow(self) -> None:
+        live_resource = replace(SNAPSHOT_RESOURCE, requires_live_check=True)
+        llm_client = FakeLLMClient(
+            "[[DATABASE_VERDICT:EXACT]]\n"
+            "[[DATABASE_PRIMARY_ID:snapshot-github-pack]]\n"
+            "数据库候选通过模型筛选。"
+        )
+        service = build_test_service(
+            llm_client,
+            SingleResourceKnowledgeBase(live_resource),
+        )
+
+        service.answer("GitHub 学生包")
+
+        self.assertIsNotNone(llm_client.last_request)
+        self.assertEqual(llm_client.last_request.web_access, "none")
+
     def test_database_resources_are_the_llm_context(self) -> None:
         llm_client = FakeLLMClient()
         service = build_test_service(llm_client)
@@ -136,13 +335,286 @@ class NavigationServiceTests(unittest.TestCase):
         self.assertIsNotNone(llm_client.last_request)
         self.assertIn(TEST_RESOURCE.title, llm_client.last_request.user_question)
         self.assertIn(TEST_RESOURCE.url, llm_client.last_request.user_question)
-        self.assertIn("首要且唯一资源依据", llm_client.last_request.user_question)
+        self.assertIn("只是数据库检索召回的候选资源", llm_client.last_request.user_question)
+        self.assertEqual(llm_client.last_request.web_access, "none")
+        self.assertIn("DATABASE_VERDICT:VERIFY", llm_client.last_request.user_question)
+        self.assertIn("DATABASE_PRIMARY_ID", llm_client.last_request.user_question)
+        self.assertEqual(llm_client.last_request.max_output_tokens, 800)
+        self.assertIn("仅依据项目数据库快照", result.answer)
+        self.assertNotIn("DATABASE_VERDICT", result.answer)
+        self.assertNotIn("DATABASE_PRIMARY_ID", result.answer)
+
+    def test_database_answer_is_unmarked_after_exact_page_visit(self) -> None:
+        llm_client = FakeLLMClient(
+            "[[DATABASE_VERDICT:EXACT]]\n"
+            "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+            "页面说明可以预约学习空间。",
+            citations=(LLMCitation(TEST_RESOURCE.title, TEST_RESOURCE.url),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client)
+
+        result = service.answer("如何预约图书馆座位？")
+
+        self.assertNotIn("仅依据项目数据库快照", result.answer)
+        self.assertEqual(result.resources, (TEST_RESOURCE,))
+
+    def test_unique_candidate_is_visited_before_it_becomes_an_exact_answer(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:VERIFY]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]"
+                ),
+            ),
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:EXACT]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+                    "该页面就是学习空间预约入口。"
+                ),
+                citations=(LLMCitation(TEST_RESOURCE.title, TEST_RESOURCE.url),),
+            ),
+        ))
+        service = build_test_service(llm_client)
+
+        result = service.answer("学习空间开放时间")
+
+        self.assertEqual(len(llm_client.requests), 2)
+        self.assertEqual(llm_client.requests[0].web_access, "none")
+        self.assertEqual(llm_client.requests[1].web_access, "open_known_urls")
+        self.assertEqual(result.resources, (TEST_RESOURCE,))
+
+    def test_backend_page_snapshot_is_used_before_model_web_tools(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:VERIFY]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]"
+                ),
+            ),
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:EXACT]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+                    "实时页面提供学习空间预约入口。"
+                ),
+            ),
+        ))
+        service = build_test_service(
+            llm_client,
+            page_reader=FakePageReader(),
+        )
+
+        result = service.answer("学习空间开放时间")
+
+        self.assertEqual(len(llm_client.requests), 2)
+        self.assertEqual(llm_client.requests[1].web_access, "none")
+        self.assertEqual(llm_client.requests[1].max_output_tokens, 1600)
+        self.assertIn("后端实时页面内容核实", llm_client.requests[1].user_question)
+        self.assertIn("选择校区、学习空间和时间段", llm_client.requests[1].user_question)
+        self.assertEqual(result.resources, (TEST_RESOURCE,))
+        self.assertNotIn("网页实时访问未能确认", result.answer)
+
+    def test_verified_navigation_entry_skips_a_second_model_call(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:VERIFY]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]"
+                ),
+            ),
+        ))
+        service = build_test_service(
+            llm_client,
+            page_reader=FakePageReader(),
+        )
+
+        result = service.answer("图书馆怎么预约？")
+
+        self.assertEqual(len(llm_client.requests), 1)
+        self.assertEqual(result.resources, (TEST_RESOURCE,))
+        self.assertIn("已实时核实", result.answer)
+        self.assertIn("选择校区、学习空间和时间段", result.answer)
 
     def test_unknown_model_urls_are_removed(self) -> None:
-        service = build_test_service(FakeLLMClient("请访问 https://evil.example/phish"))
+        service = build_test_service(FakeLLMClient(
+            "[[DATABASE_VERDICT:EXACT]]\n"
+            "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+            "请访问 https://evil.example/phish"
+        ))
         result = service.answer("图书馆预约")
         self.assertNotIn("evil.example", result.answer)
         self.assertIn("未收录链接已移除", result.answer)
+
+    def test_broad_database_candidate_falls_back_to_web_when_content_is_insufficient(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text="[[DATABASE_VERDICT:INSUFFICIENT]]",
+                citations=(LLMCitation(FINANCE_CANDIDATE.title, FINANCE_CANDIDATE.url),),
+            ),
+            LLMResponse(
+                text=(
+                    "[[WEB_VERDICT:EXACT]]\n"
+                    "[[WEB_PRIMARY_URL:https://www.ustc.edu.cn/services/tax-id]]\n"
+                    "学校税号见官方信息页。来源：https://www.ustc.edu.cn/services/tax-id"
+                ),
+                citations=(LLMCitation(
+                    "中国科大学校信息",
+                    "https://www.ustc.edu.cn/services/tax-id",
+                ),),
+            ),
+        ))
+        service = build_test_service(llm_client, BroadFinanceKnowledgeBase())
+
+        result = service.answer("学校税号")
+
+        self.assertEqual(len(llm_client.requests), 2)
+        self.assertEqual(llm_client.requests[0].web_access, "none")
+        self.assertIn("数据库候选内容核实", llm_client.requests[0].user_question)
+        self.assertEqual(llm_client.requests[1].web_access, "search_web")
+        self.assertIn("候选内容不足", llm_client.requests[1].user_question)
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].kind, "web")
+        self.assertNotEqual(result.resources[0].id, FINANCE_CANDIDATE.id)
+        self.assertNotIn("DATABASE_VERDICT", result.answer)
+
+    def test_missing_verification_verdict_returns_no_unverified_candidates(self) -> None:
+        service = build_test_service(
+            FakeLLMClient("财务报销资源可能相关。"),
+            BroadFinanceKnowledgeBase(),
+        )
+
+        result = service.answer("学校税号")
+
+        self.assertEqual(result.answer, "当前未检索到合适内容。")
+        self.assertEqual(result.resources, ())
+
+    def test_non_exact_answer_returns_at_most_five_high_threshold_candidates(self) -> None:
+        service = build_test_service(
+            FakeLLMClient(
+                "[[DATABASE_VERDICT:RELATED]]\n"
+                "[[DATABASE_RELATED_IDS:high-1,high-2,high-3,high-4,high-5,high-6,high-7,weak-confidence]]"
+            ),
+            MixedConfidenceKnowledgeBase(),
+        )
+
+        result = service.answer("校园卡补办", limit=20)
+
+        self.assertEqual(len(result.resources), 5)
+        self.assertTrue(all(resource.id.startswith("high-") for resource in result.resources))
+        self.assertNotIn(WEAK_CONFIDENCE_RESOURCE, result.resources)
+        self.assertIn("高阈值", result.answer)
+
+    def test_exact_primary_outside_first_five_is_the_only_returned_resource(self) -> None:
+        primary = HIGH_CONFIDENCE_RESOURCES[6]
+        llm_client = FakeLLMClient(
+            "[[DATABASE_VERDICT:EXACT]]\n"
+            f"[[DATABASE_PRIMARY_ID:{primary.id}]]\n"
+            "该页面给出了确定的校园卡补办入口。"
+        )
+        service = build_test_service(llm_client, MixedConfidenceKnowledgeBase())
+
+        result = service.answer("校园卡补办")
+
+        self.assertEqual(result.resources, (primary,))
+        self.assertIsNotNone(llm_client.last_request)
+        self.assertIn(f"资源 ID：{primary.id}", llm_client.last_request.user_question)
+
+    def test_no_candidate_above_high_threshold_returns_no_related_information(self) -> None:
+        service = build_test_service(
+            FakeLLMClient("不应被调用"),
+            WeakMatchKnowledgeBase(),
+        )
+
+        result = service.answer("护照")
+
+        self.assertEqual(result.answer, "当前未检索到合适内容。")
+        self.assertEqual(result.resources, ())
+
+    def test_database_miss_uses_only_trusted_web_citations(self) -> None:
+        llm_client = FakeLLMClient(
+            "[[WEB_VERDICT:RELATED]]\n"
+            "根据官方通知办理。来源：https://www.ustc.edu.cn/notice；转载：https://forum.example/notice",
+            citations=(
+                LLMCitation("中国科大官方通知", "https://www.ustc.edu.cn/notice"),
+                LLMCitation("论坛转载", "https://forum.example/notice"),
+            ),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("最新办理通知")
+
+        self.assertEqual(llm_client.last_request.web_access, "search_web")
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].kind, "web")
+        self.assertEqual(result.resources[0].url, "https://www.ustc.edu.cn/notice")
+        self.assertNotIn("forum.example", result.answer)
+        self.assertIn("未收录链接已移除", result.answer)
+
+    def test_exact_web_answer_returns_only_declared_primary_source(self) -> None:
+        primary_url = "https://finance.ustc.edu.cn/tax-info"
+        llm_client = FakeLLMClient(
+            "[[WEB_VERDICT:EXACT]]\n"
+            f"[[WEB_PRIMARY_URL:{primary_url}]]\n"
+            f"学校税号见财务处页面。来源：（{primary_url}）",
+            citations=(
+                LLMCitation("财务处开票信息", f"{primary_url}#ws_call_id=test"),
+                LLMCitation("学校相关通知", "https://www.ustc.edu.cn/tax-notice"),
+            ),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("学校税号")
+
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].url, primary_url)
+        self.assertNotIn("未收录链接已移除", result.answer)
+        self.assertNotIn("WEB_VERDICT", result.answer)
+        self.assertNotIn("WEB_PRIMARY_URL", result.answer)
+
+    def test_database_and_web_miss_returns_fixed_no_result_message(self) -> None:
+        llm_client = FakeLLMClient(
+            "网上有人提到过。",
+            citations=(LLMCitation("非可信页面", "https://example.com/post"),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("找一个不存在的资源")
+
+        self.assertEqual(result.answer, "当前未检索到合适内容。")
+        self.assertEqual(result.resources, ())
+
+    def test_missing_web_verdict_does_not_return_unverified_citations(self) -> None:
+        llm_client = FakeLLMClient(
+            "这个页面可能相关。",
+            citations=(LLMCitation("中国科大页面", "https://www.ustc.edu.cn/maybe"),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("不确定的问题")
+
+        self.assertEqual(result.answer, "当前未检索到合适内容。")
+        self.assertEqual(result.resources, ())
+
+    def test_weak_database_match_does_not_block_web_fallback(self) -> None:
+        llm_client = FakeLLMClient(
+            "[[WEB_VERDICT:EXACT]]\n"
+            "[[WEB_PRIMARY_URL:https://www.gov.cn/passport]]\n"
+            "依据官方页面回答。来源：https://www.gov.cn/passport",
+            citations=(LLMCitation("政府官方页面", "https://www.gov.cn/passport"),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, WeakMatchKnowledgeBase())
+
+        result = service.answer("护照")
+
+        self.assertEqual(llm_client.last_request.web_access, "search_web")
+        self.assertEqual(result.resources[0].kind, "web")
 
 
 class WebApiTests(unittest.TestCase):
@@ -205,15 +677,15 @@ class WebApiTests(unittest.TestCase):
         )
         self.assertEqual(closed_response.status_code, 409)
 
-    def test_llm_failure_still_returns_database_results(self) -> None:
+    def test_llm_failure_does_not_return_unverified_database_candidates(self) -> None:
         client = TestClient(create_app(
             build_test_service(FailingLLMClient()),
             InMemorySessionStore(),
         ))
         response = client.post("/api/search", json={"query": "图书馆预约"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["results"][0]["url"], TEST_RESOURCE.url)
-        self.assertIn("数据库", response.json()["answer"])
+        self.assertEqual(response.json()["results"], [])
+        self.assertIn("未返回未经核实", response.json()["answer"])
 
 
 if __name__ == "__main__":

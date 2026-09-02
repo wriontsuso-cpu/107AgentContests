@@ -58,18 +58,18 @@ function inferCategory(message: string): ResourceCategoryId | undefined {
   return rules.find(([pattern]) => pattern.test(message))?.[1]
 }
 
-function isSafeResourceUrl(value: string | undefined): value is string {
+function isWebUrl(value: string | undefined): value is string {
   if (!value) return false
   try {
     const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:'
+    return url.protocol === 'http:' || url.protocol === 'https:'
   } catch {
     return false
   }
 }
 
 function toAssistantResource(resource: Resource): AssistantResource | undefined {
-  if (!isSafeResourceUrl(resource.url)) return undefined
+  if (!isWebUrl(resource.url)) return undefined
   return {
     id: resource.id,
     title: resource.title,
@@ -126,8 +126,7 @@ function normalizeUrl(value: string): string {
   return value.replace(/^http:/, 'https:').replace(/\/$/, '').toLowerCase()
 }
 
-function remoteAccessStatus(row: RemoteResult, url: string): ResourceAccessStatus {
-  if (url.startsWith('mailto:')) return 'email'
+function remoteAccessStatus(row: RemoteResult): ResourceAccessStatus {
   return asText(row.url_status) === 'blocked' ? 'login_required' : 'direct'
 }
 
@@ -139,6 +138,24 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
   if (!candidateUrl && !candidateTitle) return undefined
 
   const explicitId = asText(row.id)
+  const resultKind = asText(row.kind)
+  const authorityLabel = asText(row.authority_label)
+  const sourceSite = asText(row.source_site).toLowerCase()
+  if (resultKind === 'web' && explicitId.startsWith('web-') && isWebUrl(candidateUrl)) {
+    const candidateHost = new URL(candidateUrl).hostname.toLowerCase()
+    const trustedLabels = new Set(['中国科大官方网页', '政府官方网页', '高校官方网页', '配置允许的可信网页'])
+    const sourceMatches = sourceSite === candidateHost || candidateHost.endsWith(`.${sourceSite}`)
+    if (!trustedLabels.has(authorityLabel) || !sourceSite || !sourceMatches) return undefined
+    return {
+      id: explicitId,
+      title: candidateTitle || candidateHost,
+      summary: asText(row.summary) || '来自后端核验过的可信网络来源。',
+      category: '可信网络来源',
+      source: authorityLabel,
+      url: candidateUrl,
+    }
+  }
+
   const endpoint = explicitId
     ? `${apiBaseUrl}/api/resources/${encodeURIComponent(explicitId)}`
     : `${apiBaseUrl}/api/resources?q=${encodeURIComponent(candidateTitle)}&page=1&page_size=5`
@@ -160,7 +177,7 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
   if (!match) return undefined
   const id = asText(match.id) || explicitId
   const verifiedUrl = asText(match.url)
-  if (!id || !isSafeResourceUrl(verifiedUrl)) return undefined
+  if (!id || !isWebUrl(verifiedUrl)) return undefined
   const category = getCategory(resolveCategory(asText(match.category), asText(match.category_id), asText(match.category_name))).label
   const sourceValue = match.source
   const source = sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)
@@ -173,7 +190,7 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
     category,
     source,
     url: verifiedUrl,
-    accessStatus: remoteAccessStatus(match, verifiedUrl),
+    accessStatus: remoteAccessStatus(match),
   }
 }
 

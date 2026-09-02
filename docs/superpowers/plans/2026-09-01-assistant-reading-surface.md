@@ -31,7 +31,7 @@ Cover headings, paragraphs, bold text, lists, block quotes, tables, inline/fence
 
 - [ ] **Step 3: Run focused tests and verify failure**
 
-Run: `pnpm test:run -- --reporter=dot src/components/assistant/MarkdownMessage.test.tsx`  
+Run: `pnpm test:run -- --reporter=dot src/components/assistant/MarkdownMessage.test.tsx`
 Expected: FAIL because the component does not exist.
 
 - [ ] **Step 4: Implement `MarkdownMessage`**
@@ -68,7 +68,7 @@ Assert the page has an `assistant-reading-surface`, no `assistant-chat` glass pa
 
 - [ ] **Step 2: Run the page test and verify failure**
 
-Run: `pnpm test:run -- --reporter=dot src/pages/AssistantPage.test.tsx`  
+Run: `pnpm test:run -- --reporter=dot src/pages/AssistantPage.test.tsx`
 Expected: FAIL on the new reading-surface semantics.
 
 - [ ] **Step 3: Replace the large rounded container**
