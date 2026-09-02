@@ -1,15 +1,9 @@
-import type { ResourceCategoryId } from '@/domain/categories'
+import metadata from './raw/catalogMetadata.json'
+import { CATEGORY_IDS, type ResourceCategoryId } from '@/domain/categories'
 
-export const resourceCounts: Record<ResourceCategoryId, number> = {
-  services: 363,
-  learning: 193,
-  research: 83,
-  competition: 46,
-  community: 209,
-  life: 86,
-  wellbeing: 156,
-  future: 159,
-  other: 0,
-}
+export const resourceCounts = Object.fromEntries(
+  CATEGORY_IDS.map((category) => [category, metadata.counts[category]]),
+) as Record<ResourceCategoryId, number>
 
-export const totalResourceCount = Object.values(resourceCounts).reduce((sum, count) => sum + count, 0)
+export const totalResourceCount = metadata.total
+export const catalogGeneratedAt = metadata.generatedAt

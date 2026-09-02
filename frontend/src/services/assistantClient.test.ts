@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from 'vitest'
 import { closeAssistantSession, requestAssistant } from './assistantClient'
 
 describe('requestAssistant', () => {
+  it('allows the backend up to 60 seconds to answer the main AI request', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout')
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ answer: '暂未找到结果', results: [] }),
+    })
+
+    await requestAssistant(
+      { message: '查询一个响应较慢的资源', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )
+
+    expect(timeoutSpy).toHaveBeenCalledWith(60_000)
+    timeoutSpy.mockRestore()
+  }, 15_000)
+
   it('returns a local guided response when no API base URL is configured', async () => {
     const first = await requestAssistant({ message: '我想参加科创竞赛', history: [] }, { apiBaseUrl: '' })
     expect(first.status).toBe('clarify')
@@ -65,6 +81,23 @@ describe('requestAssistant', () => {
     )
 
     expect(response.resources).toEqual([])
+  })
+
+  it('keeps a verified mailto resource as an email recommendation', async () => {
+    const emailResource = { id: 'email-help', title: '咨询邮箱', url: 'mailto:help@ustc.edu.cn', category: '办事指南', url_status: 'unchecked' }
+    const fetcher = vi.fn().mockImplementation(async (input: string | URL | Request) => ({
+      ok: true,
+      json: async () => String(input).endsWith('/api/search')
+        ? { answer: '可以发送邮件咨询', results: [emailResource] }
+        : emailResource,
+    }))
+
+    const response = await requestAssistant(
+      { message: '我要发邮件咨询', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )
+
+    expect(response.resources[0]).toMatchObject({ url: 'mailto:help@ustc.edu.cn', accessStatus: 'email' })
   })
 
   it('closes the active backend session when the conversation is reset', async () => {

@@ -19,6 +19,10 @@ function normalized(value: string): string {
   return value.trim().toLocaleLowerCase('zh-CN').replace(/\s+/g, ' ')
 }
 
+function isAscii(value: string): boolean {
+  return [...value].every((character) => character.charCodeAt(0) <= 127)
+}
+
 function levenshtein(left: string, right: string, maxDist: number): number {
   if (left === right) return 0
   if (Math.abs(left.length - right.length) > maxDist) return maxDist + 1
@@ -59,6 +63,15 @@ function windowDistance(haystack: string, needle: string, maxDist: number): numb
   return best
 }
 
+function hasEnoughSharedCharacters(field: string, token: string, maxDist: number): boolean {
+  const unique = new Set(token)
+  let shared = 0
+  for (const character of unique) {
+    if (field.includes(character)) shared += 1
+  }
+  return shared >= Math.max(1, unique.size - maxDist)
+}
+
 function fieldMatchRatio(field: string, token: string, allowFuzzy = false): number {
   if (!field || !token) return 0
   if (field === token) return 1
@@ -67,6 +80,7 @@ function fieldMatchRatio(field: string, token: string, allowFuzzy = false): numb
   if (!allowFuzzy || token.length < 3 || field.length > 40) return 0
 
   const maxDist = token.length <= 7 ? 1 : 2
+  if (!hasEnoughSharedCharacters(field, token, maxDist)) return 0
   const distance = windowDistance(field, token, maxDist)
   if (distance <= maxDist) return Math.max(0.48, 0.8 - distance * 0.16)
   return 0
@@ -154,6 +168,11 @@ function scoreResource(resource: Resource, full: string, terms: readonly string[
   const source = normalized(`${resource.source.label} ${resource.source.authority}`)
   const fields: [string, number, boolean][] = [
     [title, 100, true],
+    ...(resource.searchAliases ?? []).map((alias): [string, number, boolean] => [
+      normalized(alias),
+      isAscii(alias) ? 92 : 58,
+      false,
+    ]),
     [tags.join(' '), 58, false],
     [category, 44, false],
     [source, 32, false],

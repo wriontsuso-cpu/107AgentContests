@@ -51,6 +51,13 @@ describe('adaptResource', () => {
     ['免费软件-会员', 'learning'],
     ['研究生培养', 'future'],
     ['本科招生', 'future'],
+    ['校园资讯', 'community'],
+    ['生活服务', 'life'],
+    ['社团-文体活动', 'community'],
+    ['院系一线', 'community'],
+    ['学研两会-学生组织', 'community'],
+    ['二课-团学办事指南', 'community'],
+    ['中心动态', 'research'],
   ])('maps legacy category %s into %s', (legacyCategory, expectedCategory) => {
     const resource = adaptResource({
       title: `${legacyCategory}示例`,
@@ -76,6 +83,36 @@ describe('adaptResource', () => {
       publishedAt: undefined,
       source: { label: '中国科学技术大学校园资源', authority: '校园资源' },
     })
+  })
+
+  it('builds searchable text from detail fields when the frontend snapshot omits duplicated search text', () => {
+    const resource = adaptResource({
+      title: '服务入口',
+      url: 'https://example.ustc.edu.cn/',
+      category: '生活服务',
+      summary: '简要说明',
+      content: '仅在详情正文出现的关键词',
+      how_to: '办理步骤关键词',
+      source: '测试部门',
+      search_aliases: ['service-alias'],
+    })
+
+    expect(resource?.searchText).toContain('生活服务')
+    expect(resource?.searchText).toContain('仅在详情正文出现的关键词')
+    expect(resource?.searchText).toContain('办理步骤关键词')
+    expect(resource?.searchText).toContain('service-alias')
+  })
+
+  it.each([
+    [{ url: 'https://id.ustc.edu.cn/', url_status: 'blocked', url_err: '登录墙' }, 'login_required'],
+    [{ url: 'mailto:help@ustc.edu.cn', url_status: 'unchecked' }, 'email'],
+    [{ url: './offline data documents/guide.pdf', url_status: 'local' }, 'local'],
+    [{ url: 'https://www.ustc.edu.cn/', url_status: 'reachable' }, 'direct'],
+  ])('derives a user-facing access state from audit fields', (audit, accessStatus) => {
+    const resource = adaptResource({ title: '访问资源', category: '资源导航', ...audit })
+
+    expect(resource?.accessStatus).toBe(accessStatus)
+    expect(resource?.urlStatus).toBe(audit.url_status)
   })
 
   it('drops rows without a title but preserves resources with unsafe destinations', () => {

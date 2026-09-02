@@ -4,6 +4,7 @@ import type { LocalAccount } from '@/profile/types'
 import type { AssistantResponse } from '@/services/assistantClient'
 import NeedClarifier from './NeedClarifier'
 import ResourceRecommendation from './ResourceRecommendation'
+import MarkdownMessage from './MarkdownMessage'
 
 export interface ConversationMessage {
   id: string
@@ -31,7 +32,9 @@ export default function Conversation({ account, messages, loading, error, onClar
           </div>
           <div className="message__body">
             <span>{message.role === 'assistant' ? '导航助手' : '我'}</span>
-            <p>{message.content}</p>
+            {message.role === 'assistant'
+              ? <MarkdownMessage content={message.content} />
+              : <p className="message__plain-text">{message.content}</p>}
             {message.response && (
               <>
                 <NeedClarifier options={message.response.clarifications} onSelect={onClarify} disabled={loading} />

@@ -1256,6 +1256,15 @@ textarea {
   -webkit-line-clamp: 3;
 }
 
+.assistant-resource__access {
+  display: block;
+  margin-top: 9px;
+  color: #8b5a1f;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 680;
+}
+
 .assistant-resource > svg {
   position: absolute;
   right: 14px;

@@ -16,7 +16,7 @@ class LLMConfig:
     api_key: str
     model: str
     base_url: str | None = None
-    timeout_seconds: int = 30
+    timeout_seconds: int = 55
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ def load_llm_config() -> LLMConfig:
         api_key=os.getenv("LLM_API_KEY", ""),
         model=os.getenv("LLM_MODEL", "your-model-name-here"),
         base_url=os.getenv("LLM_BASE_URL") or None,
-        timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "10")),
+        timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "55")),
     )
 
 

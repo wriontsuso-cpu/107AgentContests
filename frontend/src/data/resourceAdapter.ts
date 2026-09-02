@@ -4,7 +4,7 @@ import type { Resource } from '@/domain/resource'
 type UnknownRecord = Record<string, unknown>
 
 const FALLBACK_SUMMARY = '访问资源原页面，查看最新说明与办理方式。'
-const SAFE_PROTOCOLS = new Set(['http:', 'https:'])
+const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -50,12 +50,21 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(36)
 }
 
+function accessStatus(row: UnknownRecord, rawUrl: string): Resource['accessStatus'] {
+  const status = asString(row.url_status)
+  if (status === 'blocked') return 'login_required'
+  if (status === 'local') return 'local'
+  if (rawUrl.toLocaleLowerCase().startsWith('mailto:')) return 'email'
+  return 'direct'
+}
+
 export function adaptResource(input: unknown): Resource | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
 
   const row = input as UnknownRecord
   const title = asString(row.title)
-  const url = safeUrl(row.url)
+  const rawUrl = asString(row.url)
+  const url = safeUrl(rawUrl)
   if (!title) return null
 
   const legacyCategory = (asString(row.legacy_category) || asString(row.category) || asString(row.category_name)).replaceAll('/', '-')
@@ -91,7 +100,22 @@ export function adaptResource(input: unknown): Resource | null {
     accessType: optionalString(row.access_type),
     kind: optionalString(row.kind),
     relevanceScore: asWeight(row.weight, row.relevance_score),
-    searchText: asString(row.search_text) || [title, summary, tags.join(' '), sourceLabel].join(' '),
+    searchText: asString(row.search_text) || [
+      title,
+      legacyCategory,
+      summary,
+      optionalString(row.content),
+      tags.join(' '),
+      sourceLabel,
+      optionalString(row.how_to),
+      asTags(row.search_aliases).join(' '),
+    ].filter(Boolean).join(' '),
+    searchAliases: asTags(row.search_aliases),
+    accessStatus: accessStatus(row, rawUrl),
+    accessNote: optionalString(row.url_err),
+    urlStatus: optionalString(row.url_status),
+    urlHttp: optionalString(row.url_http),
+    urlCheckedAt: optionalString(row.url_checked_at),
   }
 }
 

@@ -6,6 +6,8 @@ export interface ResourceSource {
   site?: string
 }
 
+export type ResourceAccessStatus = 'direct' | 'login_required' | 'local' | 'email'
+
 export interface Resource {
   id: string
   title: string
@@ -24,4 +26,10 @@ export interface Resource {
   kind?: string
   relevanceScore: number
   searchText: string
+  searchAliases?: string[]
+  accessStatus?: ResourceAccessStatus
+  accessNote?: string
+  urlStatus?: string
+  urlHttp?: string
+  urlCheckedAt?: string
 }

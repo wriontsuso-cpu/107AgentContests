@@ -42,23 +42,23 @@ describe('ResourcesPage', () => {
 
     expect(screen.getByRole('searchbox', { name: '搜索资源' })).toHaveValue('图书馆')
     expect(screen.getByRole('button', { name: /学习与学术/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(await screen.findByText(/条结果/)).toBeInTheDocument()
-  })
+    expect(await screen.findByText(/条结果/, {}, { timeout: 15_000 })).toBeInTheDocument()
+  }, 15_000)
 
   it('updates results and can clear all filters', async () => {
     const user = userEvent.setup()
     renderPage('/resources?q=%E4%B8%8D%E5%AD%98%E5%9C%A8%E7%9A%84%E8%B5%84%E6%BA%90')
 
-    const emptyState = (await screen.findByText('没有找到匹配的资源')).closest<HTMLElement>('.resource-empty')!
+    const emptyState = (await screen.findByText('没有找到匹配的资源', {}, { timeout: 15_000 })).closest<HTMLElement>('.resource-empty')!
     await user.click(within(emptyState).getByRole('button', { name: '清除筛选' }))
     expect(screen.getByRole('searchbox', { name: '搜索资源' })).toHaveValue('')
-    expect((await screen.findAllByRole('link', { name: /打开官方页面/ })).length).toBeGreaterThan(0)
+    expect((await screen.findAllByRole('link', { name: /打开官方页面/ }, { timeout: 15_000 })).length).toBeGreaterThan(0)
   })
 
   it('keeps resource queries in reusable local search history', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByText(/条结果/)
+    await screen.findByText(/条结果/, {}, { timeout: 15_000 })
 
     await user.type(screen.getByRole('searchbox', { name: '搜索资源' }), '图书馆预约')
     await user.click(screen.getByRole('button', { name: /^搜索$/ }))

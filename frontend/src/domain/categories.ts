@@ -56,7 +56,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想开展科研或寻找创新资源',
     icon: 'atom',
     accent: '#735bc1',
-    legacyCategories: ['学术科研', '会议-学术交流', '超算中心'],
+    legacyCategories: ['学术科研', '会议-学术交流', '超算中心', '中心动态'],
   },
   {
     id: 'competition',
@@ -78,7 +78,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我想认识同好或参加活动',
     icon: 'users-round',
     accent: '#d25763',
-    legacyCategories: ['校园活动', '二课-团学活动', '青春科大', '媒体关注'],
+    legacyCategories: ['校园活动', '二课-团学活动', '青春科大', '媒体关注', '校园资讯', '社团-文体活动', '院系一线', '学研两会-学生组织', '二课-团学办事指南'],
   },
   {
     id: 'life',
@@ -89,7 +89,7 @@ export const RESOURCE_CATEGORIES: readonly ResourceCategory[] = [
     prompt: '我遇到了校园生活问题',
     icon: 'coffee',
     accent: '#3b9b68',
-    legacyCategories: ['新生指南', '迎新资讯', '新生事务'],
+    legacyCategories: ['新生指南', '迎新资讯', '新生事务', '生活服务'],
   },
   {
     id: 'wellbeing',

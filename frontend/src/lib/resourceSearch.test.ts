@@ -41,6 +41,17 @@ describe('searchResources', () => {
     expect(result[0]?.id).toBe('2')
   })
 
+  it('keeps one-character typo matching for service names longer than eight characters', () => {
+    const longTitle = {
+      ...fixtures[0],
+      id: 'long-service',
+      title: '研究生学籍信息修改服务',
+      searchText: '研究生学籍信息修改服务',
+    }
+
+    expect(searchResources([longTitle], { query: '研究生学籍信息修该服务' })[0]?.id).toBe('long-service')
+  })
+
   it('does not treat two-character typos as matches', () => {
     expect(searchResources(fixtures, { query: '网课' }).map((resource) => resource.id)).toEqual([])
   })

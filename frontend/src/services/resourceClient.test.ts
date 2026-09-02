@@ -6,7 +6,7 @@ describe('resourceClient', () => {
     const result = await listResources({ query: '图书馆', page: 1, pageSize: 5 }, { useMocks: true })
     expect(result.items.length).toBeGreaterThan(0)
     expect(result.items.length).toBeLessThanOrEqual(5)
-  })
+  }, 15_000)
 
   it('loads the complete development catalog for a real secondary category', async () => {
     const result = await listResources(

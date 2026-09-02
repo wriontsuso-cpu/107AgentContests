@@ -13,11 +13,33 @@ function renderPage(client?: AssistantClient, store: AccountStore = createIndexe
 }
 
 describe('AssistantPage', () => {
+  it('uses an open reading surface with a collapsed searchable history rail', async () => {
+    const user = userEvent.setup()
+    const { container } = renderPage()
+
+    expect(container.querySelector('.assistant-chat')).toBeNull()
+    expect(container.querySelector('.assistant-reading-surface')).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: '展开最近会话' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByLabelText('最近会话与需求线索', { selector: '[hidden]' })).toBeInTheDocument()
+    expect(container.querySelector('.assistant-cloud-cat')).toHaveAttribute('src', '/brand/decorative-cat.svg')
+
+    await user.click(toggle)
+    expect(screen.getByRole('dialog', { name: '最近会话与需求线索' })).toHaveClass('assistant-history-rail--open')
+    expect(screen.getByRole('dialog', { name: '最近会话与需求线索' })).not.toHaveAttribute('hidden')
+    expect(screen.getByRole('searchbox', { name: '搜索最近会话' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: '关闭会话抽屉背景' })).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  })
+
   it('starts with guided prompts and rejects empty input', async () => {
     renderPage()
 
     expect(screen.getByRole('heading', { name: '先说说，你想做什么。' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '夜间书桌、地图与书本插画' })).toHaveAttribute('src', '/brand/assistant-desk.webp')
+    expect(screen.getByRole('img', { name: '暖色夕照下的层叠云朵' })).toHaveAttribute('src', '/brand/assistant-clouds.webp')
     expect(screen.getByTestId('canvas-page')).toContainElement(screen.getByRole('textbox', { name: '描述你的需求' }))
     expect(screen.queryByText(/猜部门和系统/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '我想参加竞赛或实践项目' })).toBeInTheDocument()
@@ -40,6 +62,7 @@ describe('AssistantPage', () => {
     await user.type(screen.getByRole('textbox', { name: '描述你的需求' }), '查询校医院')
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
+    await user.click(screen.getByRole('button', { name: '展开最近会话' }))
     expect(await screen.findByRole('button', { name: /查询校医院/ })).toBeInTheDocument()
     const userMessage = screen.getAllByText('查询校医院').find((element) => element.closest('article'))?.closest('article')
     expect(userMessage).toHaveClass('message--user')

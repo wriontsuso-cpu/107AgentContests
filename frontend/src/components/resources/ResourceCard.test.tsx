@@ -38,4 +38,16 @@ describe('ResourceCard', () => {
     expect(link).toHaveAttribute('href', '/resources/demo-resource')
     expect(link).not.toHaveAttribute('target')
   })
+
+  it('labels resources that may require campus login', () => {
+    renderCard({ ...baseResource, accessStatus: 'login_required', accessNote: '登录墙：需统一身份认证' })
+
+    expect(screen.getByText('可能需要登录或校内网络')).toBeInTheDocument()
+  })
+
+  it('uses an email action for mailto resources', () => {
+    renderCard({ ...baseResource, url: 'mailto:help@ustc.edu.cn', accessStatus: 'email' })
+
+    expect(screen.getByRole('link', { name: '发送邮件 · 示例校园资源' })).toHaveAttribute('href', 'mailto:help@ustc.edu.cn')
+  })
 })

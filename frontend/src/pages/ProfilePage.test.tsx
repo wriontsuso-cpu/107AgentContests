@@ -32,6 +32,13 @@ function createLegacyDatabase(databaseName: string): Promise<void> {
 }
 
 describe('ProfilePage', () => {
+  it('uses the photographic profile canvas without the assistant cat artwork', async () => {
+    const { container } = renderPage()
+
+    expect(await screen.findByAltText('雪原中的木屋实景')).toHaveAttribute('src', '/brand/profile-snow-barn.webp')
+    expect(container.querySelector('img[src="/brand/decorative-cat.svg"]')).toBeNull()
+  })
+
   beforeEach(() => sessionStorage.clear())
   afterEach(() => vi.restoreAllMocks())
 

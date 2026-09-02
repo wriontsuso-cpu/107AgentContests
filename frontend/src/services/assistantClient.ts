@@ -1,5 +1,5 @@
 import { loadLocalCatalog } from '@/data/localCatalog'
-import type { Resource } from '@/domain/resource'
+import type { Resource, ResourceAccessStatus } from '@/domain/resource'
 import { getCategory, resolveCategory, RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
 import { searchResources } from '@/lib/resourceSearch'
 
@@ -22,6 +22,7 @@ export interface AssistantResource {
   category: string
   source: string
   url: string
+  accessStatus?: ResourceAccessStatus
 }
 
 export interface AssistantResponse {
@@ -41,7 +42,7 @@ interface ClientOptions {
   useMocks?: boolean
 }
 
-const ASSISTANT_REQUEST_TIMEOUT_MS = 45_000
+const ASSISTANT_REQUEST_TIMEOUT_MS = 60_000
 
 function inferCategory(message: string): ResourceCategoryId | undefined {
   const rules: [RegExp, ResourceCategoryId][] = [
@@ -57,18 +58,18 @@ function inferCategory(message: string): ResourceCategoryId | undefined {
   return rules.find(([pattern]) => pattern.test(message))?.[1]
 }
 
-function isWebUrl(value: string | undefined): value is string {
+function isSafeResourceUrl(value: string | undefined): value is string {
   if (!value) return false
   try {
     const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:'
   } catch {
     return false
   }
 }
 
 function toAssistantResource(resource: Resource): AssistantResource | undefined {
-  if (!isWebUrl(resource.url)) return undefined
+  if (!isSafeResourceUrl(resource.url)) return undefined
   return {
     id: resource.id,
     title: resource.title,
@@ -76,6 +77,7 @@ function toAssistantResource(resource: Resource): AssistantResource | undefined 
     category: getCategory(resource.category).label,
     source: resource.source.authority || resource.source.label,
     url: resource.url,
+    accessStatus: resource.accessStatus,
   }
 }
 
@@ -124,6 +126,11 @@ function normalizeUrl(value: string): string {
   return value.replace(/^http:/, 'https:').replace(/\/$/, '').toLowerCase()
 }
 
+function remoteAccessStatus(row: RemoteResult, url: string): ResourceAccessStatus {
+  if (url.startsWith('mailto:')) return 'email'
+  return asText(row.url_status) === 'blocked' ? 'login_required' : 'direct'
+}
+
 async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: typeof fetch): Promise<AssistantResource | undefined> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const row = value as RemoteResult
@@ -153,7 +160,7 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
   if (!match) return undefined
   const id = asText(match.id) || explicitId
   const verifiedUrl = asText(match.url)
-  if (!id || !isWebUrl(verifiedUrl)) return undefined
+  if (!id || !isSafeResourceUrl(verifiedUrl)) return undefined
   const category = getCategory(resolveCategory(asText(match.category), asText(match.category_id), asText(match.category_name))).label
   const sourceValue = match.source
   const source = sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)
@@ -166,6 +173,7 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
     category,
     source,
     url: verifiedUrl,
+    accessStatus: remoteAccessStatus(match, verifiedUrl),
   }
 }
 

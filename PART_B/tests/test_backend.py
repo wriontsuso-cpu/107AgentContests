@@ -1,10 +1,13 @@
+import json
 import unittest
+from unittest.mock import patch
+from time import perf_counter
 
 from fastapi.testclient import TestClient
 
 from api import create_app
-from config import load_knowledge_base_config
-from knowledge_base import KnowledgeBase, Resource, build_knowledge_base
+from config import load_knowledge_base_config, load_llm_config
+from knowledge_base import CATEGORY_GROUPS, KnowledgeBase, Resource, _field_match_ratio, build_knowledge_base
 from llm_client import LLMClient, LLMRequest, LLMResponse
 from navigation_service import ResourceNavigationService
 from session_store import InMemorySessionStore
@@ -21,6 +24,18 @@ TEST_RESOURCE = Resource(
     authority_label="职能部门官方",
     search_text="图书馆 学习空间 座位 预约",
 )
+
+
+class ConfigTests(unittest.TestCase):
+    def test_default_llm_timeout_leaves_frontend_response_headroom(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(load_llm_config().timeout_seconds, 55)
+
+
+class MatcherTests(unittest.TestCase):
+    def test_long_service_names_keep_one_character_typo_matching(self) -> None:
+        ratio = _field_match_ratio("研究生学籍信息修改服务", "研究生学籍信息修该服务", allow_fuzzy=True)
+        self.assertGreater(ratio, 0)
 
 
 class FakeLLMClient(LLMClient):
@@ -58,9 +73,25 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         cls.knowledge_base = build_knowledge_base(load_knowledge_base_config())
 
     def test_authoritative_dataset_is_loaded_and_normalized(self) -> None:
-        self.assertEqual(len(self.knowledge_base.resources), 1295)
+        config = load_knowledge_base_config()
+        expected_total = json.loads(config.data_path.read_text(encoding="utf-8"))["total"]
+        self.assertEqual(len(self.knowledge_base.resources), expected_total)
         self.assertTrue(all(resource.id for resource in self.knowledge_base.resources))
         self.assertTrue(all(resource.search_text for resource in self.knowledge_base.resources))
+
+    def test_every_source_category_maps_to_a_resource_hall_group(self) -> None:
+        grouped = {category for categories in CATEGORY_GROUPS.values() for category in categories}
+        unexpected = {resource.category for resource in self.knowledge_base.resources} - grouped
+        self.assertEqual(unexpected, set())
+
+    def test_access_audit_fields_survive_backend_serialization(self) -> None:
+        blocked = next(resource for resource in self.knowledge_base.resources if resource.url_status == "blocked")
+        serialized = blocked.to_dict()
+
+        self.assertEqual(serialized["url_status"], "blocked")
+        self.assertTrue(serialized["url_http"])
+        self.assertTrue(serialized["url_err"])
+        self.assertEqual(serialized["url_checked_at"], "2026-08-31")
 
     def test_search_and_url_validation_use_known_data(self) -> None:
         results = self.knowledge_base.search("图书馆座位预约", limit=5)
@@ -80,6 +111,18 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         mailbox = self.knowledge_base.search("邮箱", limit=3)
         self.assertEqual(mailbox[0].title, "邮箱")
         self.assertGreaterEqual(mailbox[0].relevance_score, 7)
+
+        alias = self.knowledge_base.search("jwxt", limit=3)
+        self.assertEqual(alias[0].title, "教务系统")
+
+    def test_complete_catalog_queries_avoid_multi_second_regressions(self) -> None:
+        for query in ("校园卡", "图书管", "我想预约图书馆座位", "科研项目"):
+            with self.subTest(query=query):
+                started_at = perf_counter()
+                results = self.knowledge_base.search(query, limit=5)
+                elapsed = perf_counter() - started_at
+                self.assertTrue(results)
+                self.assertLess(elapsed, 3.0)
 
 
 class NavigationServiceTests(unittest.TestCase):

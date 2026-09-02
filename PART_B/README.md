@@ -53,9 +53,11 @@ The response contains database records only:
 
 ## Knowledge Base
 
-`JsonKnowledgeBase` loads all 1295 records once when the application starts.
-The current source file lacks the documented `id` and `search_text` fields, so
-the adapter derives them without modifying the source data:
+`JsonKnowledgeBase` loads 12454 audited, publishable records once when the application
+starts. Dead, unknown, missing-local-file, wrong-redirect, and blank-title records are
+excluded by the catalog generation step; login-restricted but valid records remain. The adapter uses the
+stored `id` and `search_text` fields and keeps deterministic fallbacks for future
+imports that omit them:
 
 - `id`: first 16 characters of the URL MD5 hash.
 - `search_text`: title, category, tags, summary, content, source, and access method.

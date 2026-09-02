@@ -3,7 +3,6 @@ import { ImagePlus, LogOut, ShieldCheck, Trash2, UserRoundPlus, X } from 'lucide
 import PageTransition from '../components/PageTransition'
 import AccountAvatar from '../components/account/AccountAvatar'
 import CanvasPage from '../components/visual/CanvasPage'
-import DecorativeArtwork from '../components/visual/DecorativeArtwork'
 import GlassPanel from '../components/visual/GlassPanel'
 import { pageVisuals } from '../data/pagePhotography'
 import { useAccount } from '../profile/AccountContext'
@@ -178,7 +177,6 @@ export default function ProfilePage() {
             )}
           </GlassPanel>
         </div>
-        <DecorativeArtwork src="/brand/decorative-cat.svg" className="profile-cat-art" />
       </CanvasPage>
     </PageTransition>
   )

@@ -11,8 +11,8 @@ export interface PageVisual {
 export const pageVisuals = {
   home: { src: assetUrl('/brand/campus-hero.webp'), alt: '中国科学技术大学雪后石碑校园实景', kind: 'official', focalPoint: '66% center' },
   resources: { src: assetUrl('/brand/home-campus-life-wide.webp'), alt: '夕阳下的大学校园草坪与远景学生', kind: 'stock', focalPoint: 'center 54%' },
-  assistant: { src: assetUrl('/brand/assistant-desk.webp'), alt: '夜间书桌、地图与书本插画', kind: 'generated', focalPoint: 'center 52%' },
-  profile: { src: assetUrl('/brand/profile-walkway.webp'), alt: '明亮的林荫校园步道', kind: 'generated', focalPoint: 'center 50%' },
+  assistant: { src: assetUrl('/brand/assistant-clouds.webp'), alt: '暖色夕照下的层叠云朵', kind: 'stock', focalPoint: 'center 48%' },
+  profile: { src: assetUrl('/brand/profile-snow-barn.webp'), alt: '雪原中的木屋实景', kind: 'stock', focalPoint: 'center 52%' },
 } as const satisfies Record<string, PageVisual>
 
 export const detailPhotography: Record<ResourceCategoryId, string> = {

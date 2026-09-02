@@ -25,9 +25,9 @@ pnpm test:e2e
 
 ## 数据边界
 
-- 本地开发模式直接读取 `src/data/raw/resources.json` 的 1295 条数据，因此分类计数、二级筛选、分页和详情保持一致。
+- 本地开发模式直接读取审计后的 `src/data/raw/resources.json`；当前快照发布 12454 条，已排除失效、状态未知、缺失本地文件、错链和空标题记录，受登录限制但有效的资源继续保留。
 - 搜索为加权模糊匹配：同义词 / 拼音 / 1 字编辑距离，并结合每条资源的 `weight`。词表在 `src/data/raw/searchRanking.json`。
-- 生产构建不引入完整 JSON；未连接后端时，`src/data/mockResources.ts` 提供覆盖八类与主要页面状态的小型兜底集。
+- 生产构建通过动态分块按需加载精简后的完整快照；未连接后端时仍可浏览和搜索全部资源。
 - `src/data/resourceAdapter.ts` 负责把当前旧字段和未来 API 字段统一成 `Resource`。
 - 更新爬虫结果时可以替换快照；只要保留 `articles` 数组或直接提供数组，页面无需修改。
 - 适配器会保留标题有效的记录；非法或非 HTTP(S) 地址不会显示外链按钮。

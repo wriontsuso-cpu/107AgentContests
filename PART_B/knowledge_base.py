@@ -26,10 +26,10 @@ _RANKING: dict[str, object] | None = None
 CATEGORY_GROUPS: dict[str, tuple[str, ...]] = {
     "services": ("办事指南", "财务服务", "保卫服务", "网站入口", "校级通知", "公示公告", "资源导航", "学工通知", "教务服务"),
     "learning": ("教务通知", "教务选课", "图书馆", "图书馆资源", "免费软件-会员"),
-    "research": ("学术科研", "会议-学术交流", "超算中心"),
+    "research": ("学术科研", "会议-学术交流", "超算中心", "中心动态"),
     "competition": ("竞赛-科创", "勤工助学"),
-    "community": ("校园活动", "二课-团学活动", "青春科大", "媒体关注"),
-    "life": ("新生指南", "迎新资讯", "新生事务"),
+    "community": ("校园活动", "二课-团学活动", "青春科大", "媒体关注", "校园资讯", "社团-文体活动", "院系一线", "学研两会-学生组织", "二课-团学办事指南"),
+    "life": ("新生指南", "迎新资讯", "新生事务", "生活服务"),
     "wellbeing": ("校医院", "奖助学金"),
     "future": ("就业实习", "研究生培养", "本科招生", "留学-出境交流", "留学-国际交流"),
 }
@@ -63,6 +63,11 @@ class Resource:
     source_count: int = 1
     authority_label: str = ""
     search_text: str = ""
+    search_aliases: tuple[str, ...] = ()
+    url_status: str = ""
+    url_checked_at: str = ""
+    url_http: str = ""
+    url_err: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -85,6 +90,10 @@ class Resource:
             "source_count": self.source_count,
             "authority_label": self.authority_label,
             "search_text": self.search_text,
+            "url_status": self.url_status,
+            "url_checked_at": self.url_checked_at,
+            "url_http": self.url_http,
+            "url_err": self.url_err,
         }
 
 
@@ -246,8 +255,9 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         return None
 
     tags = _string_tuple(row.get("tags"))
+    search_aliases = _string_tuple(row.get("search_aliases"))
     related_urls = _string_tuple(row.get("related_urls"))
-    category = _text(row.get("category"))
+    category = _text(row.get("category")).replace("/", "-")
     source = _text(row.get("source"))
     summary = _text(row.get("summary"))
     content = _text(row.get("content"))
@@ -291,6 +301,11 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         source_count=source_count,
         authority_label=_text(row.get("authority_label")),
         search_text=search_text,
+        search_aliases=search_aliases,
+        url_status=_text(row.get("url_status")),
+        url_checked_at=_text(row.get("url_checked_at")),
+        url_http=_text(row.get("url_http")),
+        url_err=_text(row.get("url_err")),
     )
 
 
@@ -352,6 +367,12 @@ def _window_distance(haystack: str, needle: str, max_dist: int) -> int:
     return best
 
 
+def _has_enough_shared_characters(field: str, token: str, max_dist: int) -> bool:
+    unique = set(token)
+    shared = sum(1 for character in unique if character in field)
+    return shared >= max(1, len(unique) - max_dist)
+
+
 def _field_match_ratio(field: str, token: str, allow_fuzzy: bool = False) -> float:
     if not field or not token:
         return 0.0
@@ -364,6 +385,8 @@ def _field_match_ratio(field: str, token: str, allow_fuzzy: bool = False) -> flo
     if not allow_fuzzy or len(token) < 3 or len(field) > 40:
         return 0.0
     max_dist = 1 if len(token) <= 7 else 2
+    if not _has_enough_shared_characters(field, token, max_dist):
+        return 0.0
     distance = _window_distance(field, token, max_dist)
     if distance <= max_dist:
         return max(0.48, 0.8 - distance * 0.16)
@@ -461,6 +484,7 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
     full = " ".join(query.lower().split())
     fields = [
         (title, 100.0, True),
+        *((alias.lower(), 92.0 if alias.isascii() else 58.0, False) for alias in resource.search_aliases),
         (tags, 58.0, False),
         (category, 44.0, False),
         (source, 32.0, False),

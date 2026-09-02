@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import HomePage from './HomePage'
+import { totalResourceCount } from '@/data/catalogMetadata'
 
 function LocationProbe() {
   const location = useLocation()
@@ -31,7 +32,7 @@ describe('HomePage', () => {
     expect(canvas).toContainElement(screen.getByRole('img', { name: '中国科学技术大学雪后石碑校园实景' }))
     expect(canvas.querySelectorAll('img')).toHaveLength(1)
     expect(screen.queryByText(/不必先知道部门名称/)).not.toBeInTheDocument()
-    expect(screen.getByText('已整理 1,295 条校园资源')).toBeInTheDocument()
+    expect(screen.getByText(`已整理 ${totalResourceCount.toLocaleString('zh-CN')} 条校园资源`)).toBeInTheDocument()
     expect(screen.getByRole('searchbox', { name: '搜索校园资源' })).toBeInTheDocument()
 
     const websiteHeading = screen.getByRole('heading', { name: '在科大，找入口不必绕远路' })
