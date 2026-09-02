@@ -52,28 +52,33 @@ describe('ProfilePage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('已回退为访客模式')
   })
 
-  it('registers a local account with password and an optional avatar field', async () => {
+  it('presents a cardless cloud-account registration view with optional avatar upload', async () => {
     const user = userEvent.setup()
-    renderPage()
+    const { container } = renderPage()
 
-    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
-    expect(screen.getByText('账号与对话仅保存到当前浏览器。')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '创建云端账户' })).toBeInTheDocument()
+    expect(screen.getByText('从任意设备继续你的会话与收藏。')).toBeInTheDocument()
+    expect(screen.getByText('CLOUD ACCOUNT')).toBeInTheDocument()
+    expect(container.querySelector('.profile-open-layout')).toBeInTheDocument()
+    expect(container.querySelector('.profile-open-account')).toBeInTheDocument()
+    expect(container.querySelector('.profile-panel')).toBeNull()
     expect(screen.getByLabelText('上传头像（可选）')).toHaveAttribute('type', 'file')
     await register(user, '余伊健')
 
     expect(await screen.findByRole('heading', { name: '你好，余伊健' })).toBeInTheDocument()
-    expect(screen.getByText('最近保存 0 / 5 次会话')).toBeInTheDocument()
+    expect(screen.getByText('云端账户已连接')).toBeInTheDocument()
+    expect(screen.getByText('最近同步 0 / 5 次会话')).toBeInTheDocument()
   })
 
   it('logs out and uses a generic error before accepting valid credentials', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: '注册本机账号' })
+    await screen.findByRole('heading', { name: '创建云端账户' })
     await register(user, '朱荣骐')
     await screen.findByRole('heading', { name: '你好，朱荣骐' })
 
     await user.click(screen.getByRole('button', { name: '退出登录' }))
-    expect(await screen.findByRole('heading', { name: '登录本机账号' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '登录云端账户' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('用户名'), '朱荣骐')
     await user.type(screen.getByLabelText('密码'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: '登录' }))
@@ -88,16 +93,16 @@ describe('ProfilePage', () => {
   it('deletes a forgotten-password account only after confirmation', async () => {
     const user = userEvent.setup()
     const { store } = renderPage()
-    await screen.findByRole('heading', { name: '注册本机账号' })
+    await screen.findByRole('heading', { name: '创建云端账户' })
     await register(user, '赵世斌')
     await user.click(await screen.findByRole('button', { name: '退出登录' }))
 
     await user.type(screen.getByLabelText('用户名'), '赵世斌')
     await user.click(screen.getByRole('button', { name: '忘记密码' }))
-    expect(screen.getByText(/只能删除这个本机账号后重新注册/)).toBeInTheDocument()
+    expect(screen.getByText(/删除当前账号后重新注册/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除账号并重新注册' }))
 
-    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '创建云端账户' })).toBeInTheDocument()
     expect(await store.listAccounts()).toEqual([])
   })
 
@@ -108,7 +113,7 @@ describe('ProfilePage', () => {
 
     render(<MemoryRouter><AccountProvider store={store}><ProfilePage /></AccountProvider></MemoryRouter>)
 
-    expect(await screen.findByRole('status')).toHaveTextContent('本机账号功能已升级，请重新注册')
-    expect(await screen.findByRole('heading', { name: '注册本机账号' })).toBeInTheDocument()
+    expect(await screen.findByRole('status')).toHaveTextContent('账户功能已更新，请重新注册')
+    expect(await screen.findByRole('heading', { name: '创建云端账户' })).toBeInTheDocument()
   })
 })

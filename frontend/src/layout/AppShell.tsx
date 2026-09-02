@@ -38,7 +38,7 @@ export default function AppShell({ children }: PropsWithChildren) {
             ))}
             <NavLink className="site-nav__profile" to="/profile" onClick={() => setMenuOpen(false)}>
               {activeAccount ? <AccountAvatar account={activeAccount} className="site-nav__avatar" /> : <UserRound size={16} aria-hidden="true" />}
-              {activeAccount?.username ?? '登录 / 注册'}
+              {activeAccount?.username ?? '云端账户'}
             </NavLink>
           </nav>
           <button

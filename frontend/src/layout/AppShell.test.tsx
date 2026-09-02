@@ -27,7 +27,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '资源大厅' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'AI 导航' })).toHaveLength(1)
     expect(screen.getByRole('link', { name: 'AI 导航' })).toHaveClass('site-nav__assistant')
-    expect(screen.getByRole('link', { name: '登录 / 注册' })).toHaveAttribute('href', '/profile')
+    expect(screen.getByRole('link', { name: '云端账户' })).toHaveAttribute('href', '/profile')
     expect(screen.getByRole('button', { name: '打开导航菜单' })).toBeInTheDocument()
   })
 

@@ -203,61 +203,143 @@
 
 .resources-route-art { right: 3vw; top: 270px; transform: rotate(5deg); opacity: .84; }
 
-/* Local profile: scenic left column, approachable glass form. */
-.profile-canvas { display: grid; place-items: center; padding: 76px 0 110px; }
-.profile-canvas .canvas-page__image { filter: saturate(.76) contrast(.96) brightness(.98); }
+/* Cloud account: the barn remains the scene; account controls sit directly on the snow light. */
+.profile-canvas {
+  min-height: calc(100vh - 76px);
+  padding: 64px 0 90px;
+  color: #183047;
+  background: #edf3f5;
+}
+.profile-canvas .canvas-page__image { filter: saturate(.72) contrast(.95) brightness(1.03); }
 .profile-canvas .canvas-page__shade {
   background:
-    linear-gradient(90deg, rgb(3 18 43 / 42%), rgb(3 18 43 / 10%) 54%, rgb(3 18 43 / 22%)),
-    linear-gradient(0deg, rgb(3 18 43 / 16%), transparent 42%);
+    linear-gradient(90deg, rgb(237 243 245 / 4%) 0%, rgb(237 243 245 / 12%) 48%, rgb(237 243 245 / 88%) 73%, rgb(237 243 245 / 98%) 100%),
+    linear-gradient(0deg, rgb(232 239 242 / 28%), transparent 45%);
 }
 
-.profile-canvas .profile-page {
+.profile-open-layout {
   position: relative;
   z-index: 1;
   display: grid;
-  min-height: auto;
-  grid-template-columns: minmax(0, .9fr) minmax(480px, 1fr);
+  min-height: calc(100vh - 230px);
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   align-items: center;
-  gap: 34px;
-  padding-bottom: 0;
+  gap: clamp(48px, 7vw, 112px);
+}
+
+.profile-open-spacer { min-height: 560px; }
+
+.profile-open-account {
+  width: 100%;
+  padding: 26px 4px 28px;
+  color: #183047;
+}
+
+.profile-open-copy {
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgb(24 48 71 / 24%);
+}
+
+.profile-open-copy .eyebrow { color: #315f82; letter-spacing: .18em; }
+.profile-open-copy h1 {
+  margin: 14px 0 12px;
+  color: #17334d;
+  font-family: var(--serif);
+  font-size: clamp(42px, 4vw, 62px);
+  font-weight: 620;
+  line-height: 1.02;
+  letter-spacing: -.035em;
+}
+.profile-open-copy p { margin: 0; color: rgb(24 48 71 / 68%); font-size: 14px; line-height: 1.7; }
+
+.profile-auth-stack,
+.profile-dashboard { display: grid; gap: 24px; }
+
+.profile-canvas .profile-auth-tabs {
+  display: flex;
+  gap: 28px;
+  padding: 0;
+  border-bottom: 1px solid rgb(24 48 71 / 20%);
+  border-radius: 0;
   background: transparent;
 }
-
-.profile-canvas .profile-hero {
-  display: block;
-  min-height: auto;
-  padding: 48px;
-  overflow: visible;
-  place-items: initial;
+.profile-canvas .profile-auth-tabs button {
+  position: relative;
+  min-height: 40px;
+  padding: 0 0 11px;
+  border-radius: 0;
+  color: rgb(24 48 71 / 54%);
+}
+.profile-canvas .profile-auth-tabs button[aria-selected='true'] { color: #17334d; background: transparent; box-shadow: none; }
+.profile-canvas .profile-auth-tabs button[aria-selected='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #315f82;
+  content: '';
 }
 
-.profile-canvas .profile-hero .eyebrow { color: #ffc69b; }
-.profile-canvas .profile-hero h1 {
-  margin: 18px 0 22px;
-  font-size: clamp(48px, 4.5vw, 72px);
-  line-height: 1.04;
-}
-.profile-canvas .profile-hero p { color: rgb(255 255 255 / 74%); }
-
-.profile-canvas .profile-panel {
-  width: auto;
-  min-height: 520px;
-  margin: 0;
-  padding: 42px;
-  border-color: var(--canvas-border);
-  border-radius: 24px;
-  background: rgb(var(--canvas-cream) / 88%);
-  box-shadow: var(--canvas-shadow);
-}
-
+.profile-canvas .profile-form { gap: 16px; }
+.profile-canvas .profile-form__heading { margin-bottom: 2px; }
+.profile-canvas .profile-form__heading > svg { color: #315f82; }
+.profile-canvas .profile-form__heading h2 { color: #17334d; font-size: 25px; }
+.profile-canvas .profile-form__heading p { color: rgb(24 48 71 / 60%); line-height: 1.55; }
+.profile-canvas .profile-form label { color: rgb(24 48 71 / 78%); }
 .profile-canvas .profile-form input,
 .profile-canvas .profile-form select {
-  border-color: rgb(20 35 59 / 14%);
-  background: rgb(255 255 255 / 66%);
+  min-height: 46px;
+  padding: 10px 2px 8px;
+  border: 0;
+  border-bottom: 1px solid rgb(24 48 71 / 34%);
+  border-radius: 0;
+  outline: none;
+  color: #17334d;
+  background: rgb(255 255 255 / 18%);
+  box-shadow: none;
+}
+.profile-canvas .profile-form input:focus,
+.profile-canvas .profile-form select:focus { border-bottom-color: #315f82; background: rgb(255 255 255 / 36%); }
+
+.profile-canvas .profile-avatar-picker {
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 0 14px;
+  border: 0;
+  border-bottom: 1px solid rgb(24 48 71 / 20%);
+  border-radius: 0;
+  background: transparent;
+}
+.profile-canvas .profile-avatar-picker > img,
+.profile-canvas .profile-avatar-picker > span { width: 54px; height: 54px; border-radius: 50%; background: rgb(255 255 255 / 54%); }
+.profile-canvas .profile-avatar-picker input { min-height: auto; background: transparent; }
+.profile-canvas .profile-forgot-button { color: #315f82; }
+
+.profile-canvas .button { border-radius: 2px; }
+.profile-canvas .button--primary { min-height: 46px; background: #244f73; box-shadow: none; }
+.profile-canvas .button--primary:hover { background: #173b5c; }
+.profile-canvas .profile-alert,
+.profile-canvas .profile-delete-confirmation { border-radius: 2px; box-shadow: none; }
+
+.profile-account-summary,
+.profile-status-card { padding: 0 0 20px; border-bottom: 1px solid rgb(24 48 71 / 20%); }
+.profile-account-summary strong,
+.profile-status-card strong { color: #17334d; }
+.profile-account-summary p,
+.profile-status-card p { color: rgb(24 48 71 / 62%); }
+.profile-account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.profile-canvas .profile-delete-button { background: rgb(255 255 255 / 12%); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .profile-open-account { animation: profile-account-arrive 520ms cubic-bezier(.2, .7, .2, 1) both; }
 }
 
-.profile-canvas .button--primary { background: #e8864a; }
+@keyframes profile-account-arrive {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 
 /* Home: a single USTC snow photograph carries the entire page. */
 .home-snow-canvas { min-height: 1420px; color: #fff; }
@@ -665,13 +747,14 @@
 }
 
 @media (max-width: 900px) {
-  .profile-canvas { padding: 52px 0 80px; }
-  .profile-canvas .profile-page {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-  }
-  .profile-canvas .profile-hero { padding: 36px; }
-  .profile-canvas .profile-panel { width: 100%; min-width: 0; padding: 32px; }
+  .profile-canvas { min-height: calc(100vh - 68px); padding: clamp(320px, 44vh, 440px) 0 72px; }
+  .profile-canvas .canvas-page__image,
+  .profile-canvas .canvas-page__shade { right: 0; bottom: auto; height: clamp(320px, 44vh, 440px); }
+  .profile-canvas .canvas-page__image { object-position: 42% 52% !important; }
+  .profile-canvas .canvas-page__shade { background: linear-gradient(0deg, #edf3f5 0%, rgb(237 243 245 / 4%) 38%, transparent 70%); }
+  .profile-open-layout { display: block; min-height: 0; }
+  .profile-open-spacer { display: none; }
+  .profile-open-account { width: min(620px, 100%); margin: 0 auto; padding: 42px 22px 0; }
   .assistant-workspace--immersive { display: block; }
   .assistant-reading-surface { padding-inline: 22px; }
   .assistant-history-toggle { display: inline-flex !important; }
@@ -683,10 +766,18 @@
 }
 
 @media (max-width: 620px) {
-  .profile-canvas { padding-top: 34px; }
-  .profile-canvas .profile-hero { padding: 28px; }
-  .profile-canvas .profile-hero h1 { font-size: 44px; }
-  .profile-canvas .profile-panel { padding: 24px 20px; }
+  .profile-canvas { padding-top: clamp(280px, 40vh, 360px); }
+  .profile-canvas .canvas-page__image,
+  .profile-canvas .canvas-page__shade { height: clamp(280px, 40vh, 360px); }
+  .profile-open-account { padding: 34px 8px 0; }
+  .profile-open-copy { margin-bottom: 22px; padding-bottom: 19px; }
+  .profile-open-copy h1 { font-size: clamp(38px, 12vw, 50px); }
+  .profile-canvas .profile-form__heading h2 { font-size: 23px; }
+  .profile-canvas .profile-avatar-picker { grid-template-columns: 48px minmax(0, 1fr); }
+  .profile-canvas .profile-avatar-picker > img,
+  .profile-canvas .profile-avatar-picker > span { width: 48px; height: 48px; }
+  .profile-canvas .profile-avatar-picker button { grid-column: 2; justify-self: start; }
+  .profile-account-actions { display: grid; }
   .assistant-canvas { padding-top: 38px; }
   .assistant-canvas__hero { min-height: 200px; }
   .assistant-reading-surface { min-height: 760px; padding: 0 12px 132px; }

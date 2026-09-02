@@ -1240,6 +1240,7 @@ textarea {
 .assistant-resource > strong {
   display: block;
   margin: 11px 0 7px;
+  color: #17324c;
   font-family: var(--serif);
   font-size: 14px;
   line-height: 1.45;
@@ -1254,6 +1255,13 @@ textarea {
   line-height: 1.65;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.assistant-resource > small {
+  display: block;
+  margin-top: 9px;
+  color: #5b6b7f;
+  font-size: 9px;
 }
 
 .assistant-resource__access {

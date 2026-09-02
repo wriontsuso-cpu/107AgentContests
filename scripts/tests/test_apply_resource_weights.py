@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 
 from scripts.apply_resource_weights import (
     build_catalog_metadata,
+    deduplicate_articles,
     enrich_article,
     frontend_projection,
     merge_publication_summary,
@@ -13,6 +14,29 @@ from scripts.apply_resource_weights import (
 
 
 class PublicationPolicyTests(unittest.TestCase):
+    def test_deduplicates_urls_after_link_replacement_and_keeps_the_richer_record(self) -> None:
+        rows = [
+            {
+                "id": "same-id",
+                "title": "简略通知",
+                "url": "https://www.ustc.edu.cn/info/1360/25272.htm",
+                "summary": "",
+                "search_text": "简略通知",
+            },
+            {
+                "id": "same-id",
+                "title": "完整通知",
+                "url": "https://www.ustc.edu.cn/info/1360/25272.htm",
+                "summary": "包含报名对象、时间和参赛方式。",
+                "search_text": "完整通知 报名对象 时间 参赛方式",
+            },
+        ]
+
+        deduplicated = deduplicate_articles(rows)
+
+        self.assertEqual(len(deduplicated), 1)
+        self.assertEqual(deduplicated[0]["title"], "完整通知")
+
     def test_rerun_preserves_original_exclusion_summary(self) -> None:
         payload = {
             "source_total": 12882,

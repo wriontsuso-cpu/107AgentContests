@@ -16,6 +16,13 @@ describe('loadLocalCatalog', () => {
     expect(resources).toHaveLength(totalResourceCount)
   }, 15_000)
 
+  it('uses the September 2 cleaned dataset from the data update branch', async () => {
+    const resources = await loadLocalCatalog()
+
+    expect(totalResourceCount).toBe(12_382)
+    expect(resources).toHaveLength(12_382)
+  }, 15_000)
+
   it('keeps core campus queries usable across the complete catalog', async () => {
     const resources = await loadLocalCatalog()
     const expectations = [

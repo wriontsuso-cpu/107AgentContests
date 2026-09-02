@@ -68,6 +68,48 @@ def dump_compact_json(path: Path, payload: Any) -> None:
     )
 
 
+def _article_information_score(article: dict[str, Any]) -> tuple[int, int, int, int, int]:
+    detail_length = sum(
+        len(str(article.get(field) or "").strip())
+        for field in ("summary", "content", "how_to")
+    )
+    authority_rank = {
+        "校级官方": 3,
+        "职能部门官方": 2,
+        "部门/服务": 1,
+    }.get(str(article.get("authority_label") or ""), 0)
+    return (
+        int(detail_length > 0),
+        detail_length,
+        int(article.get("source_count") or 0),
+        authority_rank,
+        len(str(article.get("search_text") or article.get("title") or "")),
+    )
+
+
+def deduplicate_articles(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse records that converged on one id or URL after link repair."""
+    deduplicated: list[dict[str, Any]] = []
+    seen_ids: dict[str, int] = {}
+    seen_urls: dict[str, int] = {}
+    for article in articles:
+        resource_id_value = str(article.get("id") or "").strip()
+        normalized_url = str(article.get("url") or "").strip().rstrip("/").casefold()
+        index = seen_ids.get(resource_id_value) if resource_id_value else None
+        if index is None and normalized_url:
+            index = seen_urls.get(normalized_url)
+        if index is None:
+            index = len(deduplicated)
+            deduplicated.append(article)
+        elif _article_information_score(article) > _article_information_score(deduplicated[index]):
+            deduplicated[index] = article
+        if resource_id_value:
+            seen_ids[resource_id_value] = index
+        if normalized_url:
+            seen_urls[normalized_url] = index
+    return deduplicated
+
+
 def frontend_projection(payload: dict[str, Any]) -> dict[str, Any]:
     articles = payload.get("articles")
     if not isinstance(articles, list):
@@ -324,8 +366,12 @@ def main() -> None:
     ranking = load_json(RANKING_PATH)
     source_path = next(path for path in SOURCE_CANDIDATES if path.exists())
     payload = load_json(source_path)
-    articles = payload["articles"] if isinstance(payload, dict) else payload
+    source_articles = payload["articles"] if isinstance(payload, dict) else payload
+    articles = deduplicate_articles(source_articles)
     exclusion_counts: Counter[str] = Counter()
+    duplicate_count = len(source_articles) - len(articles)
+    if duplicate_count:
+        exclusion_counts["duplicate"] = duplicate_count
     publishable: list[dict[str, Any]] = []
     for article in articles:
         reason = publication_exclusion_reason(article)
@@ -333,7 +379,7 @@ def main() -> None:
             exclusion_counts[reason] += 1
         else:
             publishable.append(article)
-    source_total, exclusion_counts = merge_publication_summary(payload, len(articles), exclusion_counts)
+    source_total, exclusion_counts = merge_publication_summary(payload, len(source_articles), exclusion_counts)
     enriched = [enrich_article(article, ranking) for article in publishable]
     validate_articles(enriched)
 
