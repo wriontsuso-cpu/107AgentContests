@@ -17,6 +17,7 @@ class LLMConfig:
     model: str
     base_url: str | None = None
     timeout_seconds: int = 30
+    max_retries: int = 1
     web_search_enabled: bool = False
     trusted_web_domains: tuple[str, ...] = (
         "ustc.edu.cn",
@@ -56,12 +57,20 @@ def load_dotenv_if_present() -> None:
 def load_llm_config() -> LLMConfig:
     load_dotenv_if_present()
 
+    timeout_seconds = int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+    if timeout_seconds <= 0:
+        raise ValueError("LLM_TIMEOUT_SECONDS must be greater than 0.")
+    max_retries = int(os.getenv("LLM_MAX_RETRIES", "1"))
+    if max_retries < 0:
+        raise ValueError("LLM_MAX_RETRIES cannot be negative.")
+
     return LLMConfig(
         provider=os.getenv("LLM_PROVIDER", "placeholder"),
         api_key=os.getenv("LLM_API_KEY", ""),
         model=os.getenv("LLM_MODEL", "your-model-name-here"),
         base_url=os.getenv("LLM_BASE_URL") or None,
-        timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "10")),
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
         web_search_enabled=_environment_flag("LLM_WEB_SEARCH_ENABLED", False),
         trusted_web_domains=tuple(
             domain.strip().lower().lstrip(".")

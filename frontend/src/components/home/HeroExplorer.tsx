@@ -29,7 +29,7 @@ export default function HeroExplorer() {
             type="search"
             value={query}
             aria-label="搜索校园资源"
-            placeholder="试试“图书馆预约”或“参加科创竞赛”"
+            placeholder="图书馆预约、科创竞赛"
             onChange={(event) => setQuery(event.target.value)}
           />
           <button type="submit" aria-label="搜索">

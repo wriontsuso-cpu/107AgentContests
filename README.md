@@ -18,6 +18,12 @@ python3 scripts/apply_resource_weights.py
 
 词表、同义词和入口加分在 `frontend/src/data/raw/searchRanking.json`。
 
+## 数据状态
+
+- 2026-09-02 原始库共 12812 条；清理重复、失效链接及缺失本地文件后，前后端使用 12382 条、39 个栏目的发布库。
+- 发布库已重新生成 `weight`、`relevance_score` 和增强后的 `search_text`，并保留 125 条需要登录或受限访问但仍有效的资源。
+- 前端内置同一份 12382 条发布数据用于目录展示；正常运行时，资源检索和 AI 问答通过后端读取发布主库。
+
 ## GitHub Pages
 
 前端通过 `.github/workflows/pages.yml` 自动构建并发布。合并或推送到 `main` 后，访问：

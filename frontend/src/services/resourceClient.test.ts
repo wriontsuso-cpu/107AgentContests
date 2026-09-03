@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { resources } from '@/data/resources'
 import { getResourceById, listResources } from './resourceClient'
 
 describe('resourceClient', () => {
@@ -17,6 +18,13 @@ describe('resourceClient', () => {
     expect(result.total).toBeGreaterThan(0)
     expect(result.items.every((resource) => resource.legacyCategory === '学工通知')).toBe(true)
   })
+
+  it('resolves a legacy detail id against the refreshed catalog', async () => {
+    const legacy = resources[0]
+    const result = await getResourceById(legacy.id, { useMocks: true })
+
+    expect(result).toMatchObject({ title: legacy.title, url: legacy.url })
+  }, 15_000)
 
   it('serializes the agreed browser API query and adapts its results', async () => {
     const fetcher = vi.fn().mockResolvedValue({

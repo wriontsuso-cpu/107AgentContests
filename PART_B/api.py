@@ -55,6 +55,15 @@ class ResourceResponse(BaseModel):
     source_count: int
     authority_label: str
     search_text: str
+    disposition: str
+    url_status: str
+    url_checked_at: str
+    url_http: str
+    url_err: str
+    info_status: str
+    event_date: str
+    expired: bool
+    freshness: str
 
 
 class SearchResponse(BaseModel):
@@ -190,12 +199,14 @@ def create_app(
 
     @app.get("/api/categories", response_model=CategoriesResponse)
     def categories() -> CategoriesResponse:
+        category_rows = service.knowledge_base.categories()
         return CategoriesResponse(
-            categories=service.knowledge_base.categories(),
+            categories=category_rows,
             tags=sorted({
                 tag
-                for resource in service.knowledge_base.resources
-                for tag in resource.tags
+                for category in category_rows
+                for tag in category.get("tags", [])
+                if isinstance(tag, str)
             }),
         )
 

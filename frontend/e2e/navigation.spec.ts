@@ -7,7 +7,7 @@ test('homepage stays focused on the product and team story', async ({ page }) =>
   await expect(page.getByRole('heading', { name: '近期常用入口' })).toHaveCount(0)
   await expect(page.getByText(/摄影来源/)).toHaveCount(0)
   await expect(page.getByText(/学生参赛项目/)).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'AI 导航' })).toHaveCount(1)
+  await expect(page.getByRole('link', { name: '让 AI 帮我梳理' })).toBeVisible()
   await expect(page.getByRole('link', { name: '帮我找资源' })).toHaveCount(0)
 })
 
@@ -29,7 +29,7 @@ test('mobile navigation exposes all primary destinations', async ({ page, isMobi
 
   await expect(page.getByRole('link', { name: '资源大厅' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'AI 导航' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '登录 / 注册' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '云端账户' })).toBeVisible()
 })
 
 test('resource cards open verified official destinations', async ({ page }) => {

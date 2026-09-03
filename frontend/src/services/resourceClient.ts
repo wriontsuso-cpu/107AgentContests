@@ -1,5 +1,6 @@
 import { loadLocalCatalog } from '@/data/localCatalog'
 import { adaptResource, adaptResourceCollection } from '@/data/resourceAdapter'
+import { resourceById } from '@/data/resources'
 import type { Resource } from '@/domain/resource'
 import { paginateResources, searchResources, type ResourceFilters } from '@/lib/resourceSearch'
 
@@ -24,6 +25,22 @@ interface ClientOptions {
 
 function shouldUseMocks(apiBaseUrl: string, explicit?: boolean): boolean {
   return explicit ?? (import.meta.env.VITE_USE_MOCKS === 'true' || !apiBaseUrl)
+}
+
+function normalizeResourceUrl(value?: string): string {
+  return value?.replace(/^http:/, 'https:').replace(/\/$/, '').toLocaleLowerCase('zh-CN') ?? ''
+}
+
+function findResourceOrLegacyMatch(catalog: Resource[], id: string): Resource | undefined {
+  const direct = catalog.find((resource) => resource.id === id)
+  if (direct) return direct
+
+  const legacy = resourceById.get(id)
+  if (!legacy) return undefined
+  const legacyUrl = normalizeResourceUrl(legacy.url)
+  return catalog.find((resource) => (
+    legacyUrl && normalizeResourceUrl(resource.url) === legacyUrl
+  ) || resource.title === legacy.title)
 }
 
 export async function listResources(request: ResourceListRequest, options: ClientOptions = {}): Promise<ResourceListResponse> {
@@ -57,12 +74,25 @@ export async function listResources(request: ResourceListRequest, options: Clien
 
 export async function getResourceById(id: string, options: ClientOptions = {}): Promise<Resource | undefined> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
-  if (shouldUseMocks(apiBaseUrl, options.useMocks)) return (await loadLocalCatalog()).find((resource) => resource.id === id)
+  if (shouldUseMocks(apiBaseUrl, options.useMocks)) return findResourceOrLegacyMatch(await loadLocalCatalog(), id)
 
-  const response = await (options.fetcher ?? fetch)(`${apiBaseUrl.replace(/\/$/, '')}/api/resources/${encodeURIComponent(id)}`, {
+  const fetcher = options.fetcher ?? fetch
+  const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '')
+  const response = await fetcher(`${normalizedBaseUrl}/api/resources/${encodeURIComponent(id)}`, {
     signal: AbortSignal.timeout(12_000),
   })
-  if (response.status === 404) return undefined
+  if (response.status === 404) {
+    const legacy = resourceById.get(id)
+    if (!legacy) return undefined
+    const fallback = await fetcher(
+      `${normalizedBaseUrl}/api/resources?q=${encodeURIComponent(legacy.title)}&page=1&page_size=20`,
+      { signal: AbortSignal.timeout(12_000) },
+    )
+    if (!fallback.ok) return undefined
+    const payload: unknown = await fallback.json()
+    const row = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {}
+    return findResourceOrLegacyMatch(adaptResourceCollection(row.items ?? row.resources ?? payload), id)
+  }
   if (!response.ok) throw new Error('资源详情暂时不可用，请稍后重试。')
   return adaptResource(await response.json()) ?? undefined
 }

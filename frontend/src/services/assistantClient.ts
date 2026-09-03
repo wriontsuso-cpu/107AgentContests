@@ -42,7 +42,30 @@ interface ClientOptions {
   useMocks?: boolean
 }
 
-const ASSISTANT_REQUEST_TIMEOUT_MS = 60_000
+const DEFAULT_ASSISTANT_REQUEST_TIMEOUT_MS = 160_000
+
+function configuredAssistantTimeout(): number {
+  const configured = Number(import.meta.env.VITE_ASSISTANT_REQUEST_TIMEOUT_MS)
+  return Number.isFinite(configured) && configured >= 10_000
+    ? configured
+    : DEFAULT_ASSISTANT_REQUEST_TIMEOUT_MS
+}
+
+function assistantRequestError(reason: unknown): Error {
+  const reasonName = reason && typeof reason === 'object' && 'name' in reason
+    ? String(reason.name)
+    : ''
+  if (['AbortError', 'TimeoutError'].includes(reasonName)) {
+    return new Error('AI 回答等待超时，请重试；若持续发生，请检查模型服务或网页访问速度。')
+  }
+  if (reason instanceof Error && reason.message.startsWith('HTTP ')) {
+    return new Error(`导航后端返回错误（${reason.message}），请稍后重试。`)
+  }
+  if (reason instanceof Error && reason.message === 'invalid response') {
+    return new Error('导航后端返回的数据格式异常，请检查后端日志。')
+  }
+  return new Error('无法连接导航后端，请确认后端服务已启动。')
+}
 
 function inferCategory(message: string): ResourceCategoryId | undefined {
   const rules: [RegExp, ResourceCategoryId][] = [
@@ -211,18 +234,22 @@ export async function requestAssistant(request: AssistantRequest, options: Clien
         session_id: request.sessionId,
         history: request.history.slice(-40),
       }),
-      signal: AbortSignal.timeout(ASSISTANT_REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(configuredAssistantTimeout()),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const payload: unknown = await response.json()
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid response')
     const row = payload as RemoteResult
     const remoteResults = Array.isArray(row.results) ? row.results : []
-    const verifiedResources = (await Promise.all(remoteResults.map((item) => mapVerifiedResult(
+    const verificationResults = await Promise.allSettled(remoteResults.map((item) => mapVerifiedResult(
       item,
       apiBaseUrl.replace(/\/$/, ''),
       fetcher,
-    )))).filter((item): item is AssistantResource => Boolean(item))
+    )))
+    const verifiedResources = verificationResults
+      .filter((result): result is PromiseFulfilledResult<AssistantResource | undefined> => result.status === 'fulfilled')
+      .map((result) => result.value)
+      .filter((item): item is AssistantResource => Boolean(item))
     const clarifications = Array.isArray(row.clarifications) ? row.clarifications.map(asText).filter(Boolean) : []
     const reply = asText(row.answer) || (verifiedResources.length > 0
       ? '我找到了几项可核验的校园资源。'
@@ -235,8 +262,8 @@ export async function requestAssistant(request: AssistantRequest, options: Clien
       clues: request.category ? [request.category] : [],
       sessionId: asText(row.session_id) || undefined,
     }
-  } catch {
-    throw new Error('导航服务暂时不可用，请稍后重试。')
+  } catch (reason) {
+    throw assistantRequestError(reason)
   }
 }
 

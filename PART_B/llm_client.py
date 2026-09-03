@@ -68,32 +68,15 @@ class OpenAICompatibleLLMClient(LLMClient):
 
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
+        self._client: object | None = None
 
     @property
     def supports_web_search(self) -> bool:
         return self.config.web_search_enabled
 
     def generate(self, request: LLMRequest) -> LLMResponse:
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError(
-                "The openai package is not installed. Run: pip install -r requirements.txt"
-            ) from exc
+        client = self._get_client()
 
-        if not self.config.api_key:
-            raise ValueError("LLM_API_KEY is required for OpenAI-compatible providers.")
-        if not self.config.model:
-            raise ValueError("LLM_MODEL is required for OpenAI-compatible providers.")
-
-        client_options: dict[str, object] = {
-            "api_key": self.config.api_key,
-            "timeout": self.config.timeout_seconds,
-        }
-        if self.config.base_url:
-            client_options["base_url"] = self.config.base_url.rstrip("/")
-
-        client = OpenAI(**client_options)
         if request.web_access != "none":
             if self.config.web_search_enabled:
                 return self._generate_with_web_access(client, request)
@@ -127,6 +110,33 @@ class OpenAICompatibleLLMClient(LLMClient):
             text=raw.choices[0].message.content or "",
             raw=raw,
         )
+
+    def _get_client(self) -> object:
+        if self._client is not None:
+            return self._client
+
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError(
+                "The openai package is not installed. Run: pip install -r requirements.txt"
+            ) from exc
+
+        if not self.config.api_key:
+            raise ValueError("LLM_API_KEY is required for OpenAI-compatible providers.")
+        if not self.config.model:
+            raise ValueError("LLM_MODEL is required for OpenAI-compatible providers.")
+
+        client_options: dict[str, object] = {
+            "api_key": self.config.api_key,
+            "timeout": self.config.timeout_seconds,
+            "max_retries": self.config.max_retries,
+        }
+        if self.config.base_url:
+            client_options["base_url"] = self.config.base_url.rstrip("/")
+
+        self._client = OpenAI(**client_options)
+        return self._client
 
     def _generate_with_web_access(self, client: object, request: LLMRequest) -> LLMResponse:
         responses = getattr(client, "responses", None)

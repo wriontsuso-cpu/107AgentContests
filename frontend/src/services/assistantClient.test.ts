@@ -26,20 +26,50 @@ describe('requestAssistant', () => {
     await expect(requestAssistant(
       { message: '图书馆预约', history: [] },
       { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
-    )).rejects.toThrow('导航服务暂时不可用')
+    )).rejects.toThrow('HTTP 503')
   })
 
-  it('gives the main assistant request a 60 second timeout', async () => {
+  it('gives the main assistant request a 160 second timeout', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout')
     const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 503 })
 
     await expect(requestAssistant(
       { message: '图书馆预约', history: [] },
       { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
-    )).rejects.toThrow('导航服务暂时不可用')
+    )).rejects.toThrow('HTTP 503')
 
-    expect(timeout).toHaveBeenCalledWith(60_000)
+    expect(timeout).toHaveBeenCalledWith(160_000)
     timeout.mockRestore()
+  })
+
+  it('distinguishes a main request timeout from a missing backend', async () => {
+    const fetcher = vi.fn().mockRejectedValue(new DOMException('timed out', 'TimeoutError'))
+
+    await expect(requestAssistant(
+      { message: '图书馆预约', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )).rejects.toThrow('AI 回答等待超时')
+  })
+
+  it('keeps the answer when one resource verification request fails', async () => {
+    const remoteResource = { id: 'resource-1', title: '图书馆预约', url: 'https://lib.ustc.edu.cn/space' }
+    const fetcher = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/api/search')) {
+        return {
+          ok: true,
+          json: async () => ({ answer: '可通过图书馆入口预约。', results: [remoteResource] }),
+        }
+      }
+      throw new DOMException('timed out', 'TimeoutError')
+    })
+
+    const response = await requestAssistant(
+      { message: '图书馆预约', history: [] },
+      { apiBaseUrl: 'https://api.example.test', fetcher: fetcher as typeof fetch },
+    )
+
+    expect(response.reply).toBe('可通过图书馆入口预约。')
+    expect(response.resources).toEqual([])
   })
 
   it('passes the agreed request contract to a configured endpoint', async () => {

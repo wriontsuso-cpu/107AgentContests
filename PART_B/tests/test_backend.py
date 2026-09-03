@@ -27,6 +27,36 @@ TEST_RESOURCE = Resource(
     search_text="图书馆 学习空间 座位 预约",
 )
 
+MIDDLE_ZONE_ROOM_RESOURCE = Resource(
+    id="middle-zone-room",
+    title="中区研修室预约",
+    url="http://roombooking.cmet.ustc.edu.cn/",
+    source="学习空间",
+    category="资源导航",
+    summary="中区研修室预约入口。",
+    content="学习空间预约。",
+    tags=("中区", "研修室", "预约"),
+    authority_label="校内服务",
+    search_text="中区 研修室 预约 图书馆 学习空间",
+)
+
+PERSON_NOTICE_RESOURCE = Resource(
+    id="person-notice",
+    title="拟聘用并派来学校工作人选公示",
+    url="https://i.ustc.edu.cn/page/site/noticeDetail/example",
+    source="人力资源部",
+    category="校级通知",
+    summary="公示一批拟聘用并派来学校工作的管理岗位人选。",
+    published_at="2021-11-04",
+    search_text=(
+        "拟聘用人选包括张见见。联系电话和邮箱为通知统一反馈渠道，"
+        "当前数据中已显示为脱敏占位符。"
+    ),
+    recommend_priority="medium",
+    disposition="flag",
+    url_status="reachable",
+)
+
 SNAPSHOT_RESOURCE = Resource(
     id="snapshot-github-pack",
     title="GitHub Student Developer Pack",
@@ -114,6 +144,26 @@ class FakePageReader:
             final_url="https://lib.ustc.edu.cn/study-space/reserve",
             title="图书馆学习空间预约系统",
             text="选择校区、学习空间和时间段后提交预约。",
+        )
+
+
+class MiddleZoneRoomPageReader:
+    def read(self, url: str) -> PageSnapshot:
+        return PageSnapshot(
+            requested_url=url,
+            final_url="https://roombooking.cmet.ustc.edu.cn/",
+            title="学习空间预约",
+            text="学习空间预约",
+        )
+
+
+class PortalLoginPageReader:
+    def read(self, url: str) -> PageSnapshot:
+        return PageSnapshot(
+            requested_url=url,
+            final_url="https://passport.ustc.edu.cn/login",
+            title="统一身份认证",
+            text="请登录后访问校内信息门户。",
         )
 
 
@@ -217,6 +267,103 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         self.assertTrue(all(resource.id for resource in self.knowledge_base.resources))
         self.assertTrue(all(resource.search_text for resource in self.knowledge_base.resources))
 
+    def test_audit_fields_filter_unrecommendable_resources(self) -> None:
+        rows = {
+            "articles": [
+                {
+                    "id": "active",
+                    "title": "可用服务入口",
+                    "url": "https://example.test/active",
+                    "category": "办事指南",
+                    "disposition": "keep",
+                    "url_status": "reachable",
+                    "url_checked_at": "2026-09-02",
+                    "content_info": {
+                        "digest": "提供可用服务入口。",
+                        "points": ["按页面提示办理"],
+                    },
+                },
+                {
+                    "id": "restricted",
+                    "title": "受限服务入口",
+                    "url": "https://example.test/restricted",
+                    "category": "办事指南",
+                    "disposition": "keep",
+                    "url_status": "blocked",
+                    "url_err": "需登录/CAS",
+                },
+                {
+                    "id": "deprecated",
+                    "title": "停用服务入口",
+                    "url": "https://example.test/deprecated",
+                    "category": "办事指南",
+                    "disposition": "deprecate",
+                    "url_status": "reachable",
+                },
+                {
+                    "id": "dead",
+                    "title": "失效服务入口",
+                    "url": "https://example.test/dead",
+                    "category": "办事指南",
+                    "disposition": "keep",
+                    "url_status": "dead",
+                },
+            ],
+        }
+        with TemporaryDirectory() as directory:
+            data_path = Path(directory) / "audit.json"
+            data_path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            knowledge_base = JsonKnowledgeBase(data_path)
+
+        visible_ids = {resource.id for resource in knowledge_base.list_resources()}
+        self.assertEqual(visible_ids, {"active", "restricted"})
+        self.assertEqual(
+            {resource.id for resource in knowledge_base.search("服务入口", limit=5)},
+            {"active", "restricted"},
+        )
+        self.assertIsNone(knowledge_base.get("deprecated"))
+        self.assertFalse(knowledge_base.is_known_url("https://example.test/dead"))
+        self.assertEqual(knowledge_base.categories()[0]["count"], 2)
+
+        active = knowledge_base.get("active")
+        restricted = knowledge_base.get("restricted")
+        self.assertIsNotNone(active)
+        self.assertIsNotNone(restricted)
+        self.assertEqual(active.summary, "提供可用服务入口。")
+        self.assertEqual(active.answerable_facts, ("按页面提示办理",))
+        self.assertEqual(active.to_dict()["url_checked_at"], "2026-09-02")
+        self.assertEqual(restricted.recommend_priority, "medium")
+        self.assertEqual(restricted.access_notes, "需登录/CAS")
+
+    def test_duplicate_source_ids_are_disambiguated_for_api_routes(self) -> None:
+        rows = {
+            "articles": [
+                {
+                    "id": "shared-id",
+                    "title": "同一通知的校级入口",
+                    "url": "https://www.ustc.edu.cn/notice",
+                    "source": "学校主站",
+                    "category": "校级通知",
+                },
+                {
+                    "id": "shared-id",
+                    "title": "同一通知的教务入口",
+                    "url": "https://www.ustc.edu.cn/notice",
+                    "source": "教务处",
+                    "category": "教务通知",
+                },
+            ],
+        }
+        with TemporaryDirectory() as directory:
+            data_path = Path(directory) / "duplicates.json"
+            data_path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            knowledge_base = JsonKnowledgeBase(data_path)
+
+        resource_ids = [resource.id for resource in knowledge_base.resources]
+        self.assertEqual(len(resource_ids), len(set(resource_ids)))
+        self.assertTrue(all(resource_id.startswith("shared-id-") for resource_id in resource_ids))
+        self.assertTrue(all(knowledge_base.get(resource_id) for resource_id in resource_ids))
+
     def test_search_and_url_validation_use_known_data(self) -> None:
         results = self.knowledge_base.search("图书馆座位预约", limit=5)
         self.assertTrue(results)
@@ -236,6 +383,41 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
         mailbox = self.knowledge_base.search("邮箱", limit=3)
         self.assertEqual(mailbox[0].title, "邮箱")
         self.assertGreaterEqual(mailbox[0].relevance_score, 7)
+
+    def test_person_name_in_search_text_outranks_generic_contact_pages(self) -> None:
+        rows = {
+            "articles": [
+                {
+                    "id": "person-notice",
+                    "title": "拟聘用人选公示",
+                    "url": "https://i.ustc.edu.cn/notice/person",
+                    "category": "校级通知",
+                    "disposition": "flag",
+                    "url_status": "reachable",
+                    "content_info": {"digest": "公示拟聘用人选。"},
+                    "search_text": "拟聘用人选包括张见见。",
+                },
+                {
+                    "id": "generic-contact",
+                    "title": "联系方式",
+                    "url": "https://www.ustc.edu.cn/contact",
+                    "category": "网站入口",
+                    "disposition": "keep",
+                    "url_status": "reachable",
+                    "search_text": "学校各部门联系方式、电话和邮箱。",
+                },
+            ],
+        }
+        with TemporaryDirectory() as directory:
+            data_path = Path(directory) / "people.json"
+            data_path.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            knowledge_base = JsonKnowledgeBase(data_path)
+
+        for query in ("张见见老师", "张见见的联系方式", "查一下张见见老师的信息"):
+            with self.subTest(query=query):
+                results = knowledge_base.search(query, limit=5, minimum_score=28)
+                self.assertTrue(results)
+                self.assertEqual(results[0].id, "person-notice")
 
     def test_jsonl_snapshot_fields_drive_alias_and_negative_alias_matching(self) -> None:
         rows = [
@@ -416,12 +598,19 @@ class NavigationServiceTests(unittest.TestCase):
         self.assertEqual(result.resources, (TEST_RESOURCE,))
         self.assertNotIn("网页实时访问未能确认", result.answer)
 
-    def test_verified_navigation_entry_skips_a_second_model_call(self) -> None:
+    def test_navigation_entry_still_requires_semantic_page_verification(self) -> None:
         llm_client = SequenceLLMClient((
             LLMResponse(
                 text=(
                     "[[DATABASE_VERDICT:VERIFY]]\n"
                     "[[DATABASE_PRIMARY_ID:resource-1]]"
+                ),
+            ),
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:EXACT]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+                    "实时页面确认这是图书馆学习空间预约入口。"
                 ),
             ),
         ))
@@ -432,10 +621,80 @@ class NavigationServiceTests(unittest.TestCase):
 
         result = service.answer("图书馆怎么预约？")
 
-        self.assertEqual(len(llm_client.requests), 1)
+        self.assertEqual(len(llm_client.requests), 2)
+        self.assertIn("校区、地点、机构和服务对象", llm_client.requests[1].user_question)
         self.assertEqual(result.resources, (TEST_RESOURCE,))
-        self.assertIn("已实时核实", result.answer)
-        self.assertIn("选择校区、学习空间和时间段", result.answer)
+        self.assertIn("学习空间预约入口", result.answer)
+
+    def test_similar_middle_zone_room_does_not_answer_middle_zone_library_question(self) -> None:
+        official_overview_url = "https://lib.ustc.edu.cn/about/library"
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:VERIFY]]\n"
+                    "[[DATABASE_PRIMARY_ID:middle-zone-room]]"
+                ),
+            ),
+            LLMResponse(text="[[DATABASE_VERDICT:INSUFFICIENT]]"),
+            LLMResponse(
+                text=(
+                    "[[WEB_VERDICT:EXACT]]\n"
+                    f"[[WEB_PRIMARY_URL:{official_overview_url}]]\n"
+                    "图书馆官方当前馆舍列表未列出中区图书馆，因此不能把中区研修室预约入口当作图书馆入口。"
+                ),
+                citations=(LLMCitation("中国科大图书馆本馆简介", official_overview_url),),
+            ),
+        ))
+        service = build_test_service(
+            llm_client,
+            SingleResourceKnowledgeBase(MIDDLE_ZONE_ROOM_RESOURCE),
+            MiddleZoneRoomPageReader(),
+        )
+
+        result = service.answer("中区图书馆怎么预约")
+
+        self.assertEqual(
+            [request.web_access for request in llm_client.requests],
+            ["none", "none", "search_web"],
+        )
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].kind, "web")
+        self.assertNotEqual(result.resources[0].id, MIDDLE_ZONE_ROOM_RESOURCE.id)
+        self.assertIn("未列出中区图书馆", result.answer)
+
+    def test_exact_person_detail_uses_index_evidence_and_survives_live_miss(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:EXACT]]\n"
+                    "[[DATABASE_PRIMARY_ID:person-notice]]\n"
+                    "2021 年 11 月 4 日的历史公示名单提及张见见；"
+                    "这不能证明其当前任职。通知中的联系方式是统一反馈渠道且已脱敏，"
+                    "不能作为张见见的个人联系方式。"
+                ),
+            ),
+            LLMResponse(text="[[DATABASE_VERDICT:INSUFFICIENT]]"),
+            LLMResponse(text="[[WEB_VERDICT:INSUFFICIENT]]"),
+        ))
+        service = build_test_service(
+            llm_client,
+            SingleResourceKnowledgeBase(PERSON_NOTICE_RESOURCE),
+            PortalLoginPageReader(),
+        )
+
+        result = service.answer("查一下张见见老师的信息")
+
+        self.assertEqual(
+            [request.web_access for request in llm_client.requests],
+            ["none", "none", "search_web"],
+        )
+        initial_prompt = llm_client.requests[0].user_question
+        self.assertIn("检索命中原文片段", initial_prompt)
+        self.assertIn("张见见", initial_prompt)
+        self.assertIn("通知末尾的统一反馈电话、邮箱不得归属于", initial_prompt)
+        self.assertEqual(result.resources, (PERSON_NOTICE_RESOURCE,))
+        self.assertIn("仅依据项目数据库快照", result.answer)
+        self.assertIn("不能证明其当前任职", result.answer)
 
     def test_unknown_model_urls_are_removed(self) -> None:
         service = build_test_service(FakeLLMClient(
@@ -600,6 +859,36 @@ class NavigationServiceTests(unittest.TestCase):
 
         self.assertEqual(result.answer, "当前未检索到合适内容。")
         self.assertEqual(result.resources, ())
+
+    def test_substantive_cited_web_answer_survives_a_missing_control_marker(self) -> None:
+        official_url = "https://finance.ustc.edu.cn/tax-info"
+        llm_client = FakeLLMClient(
+            f"根据学校财务处官方页面，学校统一社会信用代码可在开票信息中查询。来源：{official_url}",
+            citations=(LLMCitation("财务处开票信息", official_url),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("学校税号")
+
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].url, official_url)
+        self.assertIn("统一社会信用代码", result.answer)
+
+    def test_exact_web_answer_uses_sole_citation_when_primary_marker_is_missing(self) -> None:
+        official_url = "https://finance.ustc.edu.cn/tax-info"
+        llm_client = FakeLLMClient(
+            "[[WEB_VERDICT:EXACT]]\n学校税号可在财务处官方开票信息页面中核实。",
+            citations=(LLMCitation("财务处开票信息", official_url),),
+            supports_web_search=True,
+        )
+        service = build_test_service(llm_client, EmptyKnowledgeBase())
+
+        result = service.answer("学校税号")
+
+        self.assertEqual(len(result.resources), 1)
+        self.assertEqual(result.resources[0].url, official_url)
+        self.assertNotIn("WEB_VERDICT", result.answer)
 
     def test_weak_database_match_does_not_block_web_fallback(self) -> None:
         llm_client = FakeLLMClient(

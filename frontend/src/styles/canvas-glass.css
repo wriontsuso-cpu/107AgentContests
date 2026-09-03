@@ -747,6 +747,23 @@
 }
 
 @media (max-width: 900px) {
+  .home-snow-hero {
+    min-height: calc(100svh - 68px);
+    grid-template-columns: minmax(0, 1fr);
+    align-content: end;
+    gap: 30px;
+    padding-block: 84px 48px;
+  }
+  .home-snow-hero .photo-entry__copy,
+  .home-snow-hero .photo-entry__actions { width: 100%; min-width: 0; }
+  .home-snow-hero h1 { font-size: 64px; }
+  .home-snow-hero__caption { display: none; }
+  .home-snow-story {
+    min-height: 760px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 72px;
+    padding-block: 96px 110px;
+  }
   .profile-canvas { min-height: calc(100vh - 68px); padding: clamp(320px, 44vh, 440px) 0 72px; }
   .profile-canvas .canvas-page__image,
   .profile-canvas .canvas-page__shade { right: 0; bottom: auto; height: clamp(320px, 44vh, 440px); }
@@ -766,6 +783,25 @@
 }
 
 @media (max-width: 620px) {
+  .home-snow-canvas { min-height: 1320px; }
+  .home-snow-canvas .canvas-page__image,
+  .home-snow-canvas .canvas-page__shade {
+    inset: 68px 0 auto;
+    height: calc(100svh - 68px);
+  }
+  .home-snow-hero {
+    min-height: calc(100svh - 68px);
+    gap: 24px;
+    padding-block: 64px 34px;
+  }
+  .home-snow-hero h1 { font-size: 48px; letter-spacing: 0; }
+  .home-snow-story {
+    min-height: 656px;
+    gap: 64px;
+    padding-block: 84px 96px;
+  }
+  .home-snow-story__chapter h2 { font-size: 40px; letter-spacing: 0; }
+  .home-snow-story__chapter p { font-size: 14px; }
   .profile-canvas { padding-top: clamp(280px, 40vh, 360px); }
   .profile-canvas .canvas-page__image,
   .profile-canvas .canvas-page__shade { height: clamp(280px, 40vh, 360px); }

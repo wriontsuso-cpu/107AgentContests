@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 from hashlib import md5
 import json
 from pathlib import Path
@@ -41,6 +42,28 @@ _IGNORED_TERMS = {
     "了解", "相关", "资源", "一下", "是否", "有没有", "哪里", "哪个", "哪些", "帮助",
     "的", "吗", "呢", "那", "请", "是",
 }
+_PERSON_ROLE_SUFFIXES = (
+    "副教授", "研究员", "辅导员", "工程师", "教授", "讲师", "老师", "博士", "主任",
+)
+_PERSON_LOOKUP_TERMS = {
+    "联系方式", "联系信息", "个人信息", "联系电话", "手机号", "办公室", "邮箱", "电话",
+    "简介", "资料", "履历", "任职", "信息",
+}
+_COMMON_SURNAME_CHARACTERS = frozenset(
+    "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜"
+    "戚谢邹喻柏窦章苏潘葛奚范彭郎鲁韦昌马苗方俞任袁柳鲍史唐费廉岑薛"
+    "雷贺倪汤滕殷罗毕郝邬安常乐于傅卞齐康伍余顾孟平黄穆萧尹姚邵汪祁"
+    "毛米贝明臧戴谈宋庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄江童颜"
+    "郭梅盛林钟徐邱骆高夏蔡田樊胡凌霍虞万柯管卢莫房解宗丁宣邓郁杭洪"
+    "包诸左石崔吉龚程裴陆荣翁荀惠甄家封芮储靳段巫乌焦侯甘祖武符刘景"
+    "詹龙叶司黎白怀蒲鄂索赖卓蔺屠蒙池乔闻党翟谭劳姬申冉雍桑桂牛边燕"
+    "尚农温庄晏柴瞿阎慕连茹艾容向古易慎廖聂辛简饶曾沙鞠丰关查荆游权"
+)
+_COMMON_COMPOUND_SURNAMES = (
+    "欧阳", "上官", "司马", "诸葛", "夏侯", "皇甫", "尉迟", "公孙", "慕容", "令狐",
+)
+
+
 @dataclass(frozen=True)
 class Resource:
     title: str
@@ -80,7 +103,15 @@ class Resource:
     snapshot_confidence: str = ""
     requires_live_check: bool = True
     snapshot_enrichment: str = ""
+    disposition: str = ""
     url_status: str = ""
+    url_checked_at: str = ""
+    url_http: str = ""
+    url_err: str = ""
+    info_status: str = ""
+    event_date: str = ""
+    expired: bool = False
+    freshness: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -103,6 +134,15 @@ class Resource:
             "source_count": self.source_count,
             "authority_label": self.authority_label,
             "search_text": self.search_text,
+            "disposition": self.disposition,
+            "url_status": self.url_status,
+            "url_checked_at": self.url_checked_at,
+            "url_http": self.url_http,
+            "url_err": self.url_err,
+            "info_status": self.info_status,
+            "event_date": self.event_date,
+            "expired": self.expired,
+            "freshness": self.freshness,
         }
 
 
@@ -123,7 +163,7 @@ class KnowledgeBase(ABC):
             resource
             for resource in self.resources
             if self._matches_category(resource, category)
-            and resource.recommend_priority.lower() != "skip"
+            and _is_recommendable(resource)
         ]
         return self._rank(candidates, query, minimum_score)[:limit]
 
@@ -140,7 +180,7 @@ class KnowledgeBase(ABC):
             if self._matches_category(resource, category)
             and (not group or resource.category == group)
             and (not tag or tag in resource.tags)
-            and resource.recommend_priority.lower() != "skip"
+            and _is_recommendable(resource)
         ]
         if query.strip():
             return self._rank(candidates, query)
@@ -151,19 +191,24 @@ class KnowledgeBase(ABC):
 
     def get(self, resource_id: str) -> Resource | None:
         return next(
-            (resource for resource in self.resources if resource.id == resource_id),
+            (
+                resource
+                for resource in self.resources
+                if resource.id == resource_id and _is_recommendable(resource)
+            ),
             None,
         )
 
     def categories(self) -> list[dict[str, object]]:
-        category_names = sorted({resource.category for resource in self.resources})
+        resources = tuple(resource for resource in self.resources if _is_recommendable(resource))
+        category_names = sorted({resource.category for resource in resources})
         return [
             {
                 "name": name,
-                "count": sum(1 for resource in self.resources if resource.category == name),
+                "count": sum(1 for resource in resources if resource.category == name),
                 "tags": sorted({
                     tag
-                    for resource in self.resources
+                    for resource in resources
                     if resource.category == name
                     for tag in resource.tags
                 }),
@@ -178,6 +223,7 @@ class KnowledgeBase(ABC):
         return any(
             normalized == _normalize_url(candidate)
             for resource in self.resources
+            if _is_recommendable(resource)
             for candidate in (resource.url, *resource.related_urls)
         )
 
@@ -240,12 +286,12 @@ class JsonKnowledgeBase(KnowledgeBase):
         if not isinstance(rows, list):
             raise ValueError("Knowledge-base JSON must contain an articles array.")
 
-        resources = tuple(
+        resources = _with_unique_resource_ids(tuple(
             resource
             for row in rows
             if isinstance(row, dict)
             if (resource := _resource_from_row(row)) is not None
-        )
+        ))
         if not resources:
             raise ValueError("Knowledge-base JSON contains no valid resources.")
         return resources
@@ -291,9 +337,13 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
     snapshot = snapshot_value if isinstance(snapshot_value, dict) else {}
     intent_fit_value = snapshot.get("intent_fit")
     intent_fit = intent_fit_value if isinstance(intent_fit_value, dict) else {}
+    content_info_value = row.get("content_info")
+    content_info = content_info_value if isinstance(content_info_value, dict) else {}
 
     snapshot_one_liner = _text(snapshot.get("one_liner"))
     snapshot_description = _text(snapshot.get("description"))
+    content_digest = _text(content_info.get("digest"))
+    content_points = _string_tuple(content_info.get("points"))
     how_to_steps = _string_tuple(snapshot.get("how_to_steps"))
     tags = _merge_string_tuples(
         _string_tuple(row.get("tags")),
@@ -302,8 +352,8 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
     related_urls = _string_tuple(row.get("related_urls"))
     category = _text(row.get("category"))
     source = _text(row.get("source"))
-    summary = snapshot_one_liner or _text(row.get("summary"))
-    content = snapshot_description or _text(row.get("content"))
+    summary = snapshot_one_liner or content_digest or _text(row.get("summary"))
+    content = snapshot_description or _text(row.get("content")) or "；".join(content_points)
     how_to = "；".join(how_to_steps) or _text(row.get("how_to"))
     search_text = (
         _text(row.get("search_text_positive"))
@@ -316,6 +366,7 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
                 " ".join(tags),
                 summary,
                 content,
+                " ".join(content_points),
                 source,
                 how_to,
             )
@@ -327,6 +378,8 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
     source_count = _positive_int(row.get("source_count")) or len({
         candidate for candidate in (_normalize_url(url), *map(_normalize_url, related_urls)) if candidate
     }) or 1
+    disposition = _text(row.get("disposition")) or _text(snapshot.get("disposition_hint"))
+    url_status = _text(row.get("url_status")) or _text(snapshot.get("url_status_hint"))
 
     return Resource(
         title=title,
@@ -352,9 +405,9 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         snapshot_one_liner=snapshot_one_liner,
         snapshot_description=snapshot_description,
         content_kind=_text(snapshot.get("content_kind")),
-        recommend_priority=_text(snapshot.get("recommend_priority")),
+        recommend_priority=_recommend_priority(row, snapshot, disposition, url_status),
         audience=_string_tuple(snapshot.get("audience")),
-        access_notes=_text(snapshot.get("access_notes")),
+        access_notes=_text(snapshot.get("access_notes")) or _text(row.get("url_err")),
         how_to_steps=how_to_steps,
         recommend_when=_string_tuple(intent_fit.get("recommend_when")),
         do_not_recommend_when=_string_tuple(intent_fit.get("do_not_recommend_when")),
@@ -362,12 +415,75 @@ def _resource_from_row(row: dict[str, object]) -> Resource | None:
         negative_aliases=_string_tuple(snapshot.get("negative_aliases")),
         supported_intents=_string_tuple(snapshot.get("supported_intents")),
         excluded_intents=_string_tuple(snapshot.get("excluded_intents")),
-        answerable_facts=_fact_tuple(snapshot.get("answerable_facts")),
+        answerable_facts=_fact_tuple(snapshot.get("answerable_facts")) or content_points,
         snapshot_confidence=_text(snapshot.get("confidence")),
         requires_live_check=_boolean(snapshot.get("requires_live_check"), default=True),
         snapshot_enrichment=_text(snapshot.get("enrichment")),
-        url_status=_text(row.get("url_status")) or _text(snapshot.get("url_status_hint")),
+        disposition=disposition,
+        url_status=url_status,
+        url_checked_at=_text(row.get("url_checked_at")),
+        url_http=_text(row.get("url_http")),
+        url_err=_text(row.get("url_err")),
+        info_status=_text(row.get("info_status")),
+        event_date=_text(row.get("event_date")),
+        expired=_boolean(row.get("expired"), default=False),
+        freshness=_text(row.get("freshness")),
     )
+
+
+def _is_recommendable(resource: Resource) -> bool:
+    return (
+        resource.recommend_priority.lower() != "skip"
+        and resource.disposition.lower() != "deprecate"
+        and resource.url_status.lower() != "dead"
+    )
+
+
+def _with_unique_resource_ids(resources: tuple[Resource, ...]) -> tuple[Resource, ...]:
+    id_counts = Counter(resource.id for resource in resources)
+    if all(count == 1 for count in id_counts.values()):
+        return resources
+
+    unique_resources: list[Resource] = []
+    used_ids: set[str] = set()
+    for index, resource in enumerate(resources):
+        resource_id = resource.id
+        if id_counts[resource_id] > 1:
+            identity = "\0".join((
+                resource_id,
+                resource.url,
+                resource.category,
+                resource.source,
+                resource.title,
+            ))
+            resource_id = f"{resource_id}-{md5(identity.encode('utf-8')).hexdigest()[:8]}"
+        while resource_id in used_ids:
+            resource_id = f"{resource_id}-{index}"
+        used_ids.add(resource_id)
+        unique_resources.append(
+            resource if resource_id == resource.id else replace(resource, id=resource_id)
+        )
+    return tuple(unique_resources)
+
+
+def _recommend_priority(
+    row: dict[str, object],
+    snapshot: dict[object, object],
+    disposition: str,
+    url_status: str,
+) -> str:
+    if disposition.lower() == "deprecate" or url_status.lower() == "dead":
+        return "skip"
+
+    explicit = _text(snapshot.get("recommend_priority")).lower()
+    is_limited = (
+        disposition.lower() == "flag"
+        or url_status.lower() == "blocked"
+        or _boolean(row.get("expired"), default=False)
+    )
+    if explicit in {"high", "medium", "low", "skip"}:
+        return "medium" if is_limited and explicit == "high" else explicit
+    return "medium" if is_limited else ""
 
 
 def _ranking() -> dict[str, object]:
@@ -523,6 +639,43 @@ def _query_terms(query: str) -> tuple[str, ...]:
     return tuple(sorted((term for term in terms if term), key=lambda value: (-len(value), value)))
 
 
+def _person_name_terms(query: str) -> tuple[str, ...]:
+    cleaned = _strip_stopwords(query.lower())
+    for prefix in ("搜索", "查找", "查询", "搜一下", "找一下"):
+        cleaned = cleaned.replace(prefix, " ")
+    sequences = _CHINESE_SEQUENCE.findall(cleaned)
+    names: set[str] = set()
+
+    for sequence in sequences:
+        for suffix in _PERSON_ROLE_SUFFIXES:
+            if sequence.endswith(suffix):
+                candidate = sequence[:-len(suffix)]
+                if _looks_like_person_name(candidate):
+                    names.add(candidate)
+        if sequence.startswith("联系人"):
+            candidate = sequence.removeprefix("联系人")
+            if _looks_like_person_name(candidate):
+                names.add(candidate)
+
+    if any(sequence in _PERSON_LOOKUP_TERMS for sequence in sequences):
+        excluded = _PERSON_LOOKUP_TERMS.union(_PERSON_ROLE_SUFFIXES)
+        names.update(
+            sequence
+            for sequence in sequences
+            if sequence not in excluded and _looks_like_person_name(sequence)
+        )
+    return tuple(sorted(names, key=lambda value: (-len(value), value)))
+
+
+def _looks_like_person_name(value: str) -> bool:
+    if not 2 <= len(value) <= 4:
+        return False
+    return (
+        value[0] in _COMMON_SURNAME_CHARACTERS
+        or any(value.startswith(surname) for surname in _COMMON_COMPOUND_SURNAMES)
+    )
+
+
 def _score_fields(fields: list[tuple[str, float, bool]], token: str) -> float:
     best = 0.0
     for field, weight, allow_fuzzy in fields:
@@ -562,6 +715,12 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
         (content, 16.0, False),
         (search_text, 12.0, False),
     ]
+    person_name_terms = _person_name_terms(query)
+    person_name_match = any(
+        name in field
+        for name in person_name_terms
+        for field in (title, aliases, summary, content, search_text)
+    )
 
     full_score = _score_fields(fields, full) * 10.0
     extra_terms = [term for term in terms if term != full]
@@ -575,7 +734,7 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
             matched += 1
             term_score += value
     coverage = matched / len(scoring_terms) if scoring_terms else 0.0
-    strong = full_score >= 280 or term_score >= 70
+    strong = full_score >= 280 or term_score >= 70 or person_name_match
     covered = coverage >= 0.5 and term_score > 0
     if not strong and not covered and full_score <= 0:
         return 0.0
@@ -590,6 +749,10 @@ def _score_resource(resource: Resource, query: str, terms: tuple[str, ...]) -> f
     )
     if resource.snapshot_enrichment == "llm_intent_v1":
         score += 8.0
+    if person_name_match:
+        # A literal person-name hit must outrank generic pages matching only
+        # words such as "contact" or "information" in the same query.
+        score += 1200.0
     return max(score, 0.0)
 
 

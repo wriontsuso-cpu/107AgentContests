@@ -46,10 +46,13 @@ class FakeResponses:
 
 class FakeOpenAI:
     instance: "FakeOpenAI | None" = None
+    initialization_count = 0
 
-    def __init__(self, **_: object) -> None:
+    def __init__(self, **options: object) -> None:
         self.responses = FakeResponses()
+        self.options = options
         FakeOpenAI.instance = self
+        FakeOpenAI.initialization_count += 1
 
 
 class OpenAICompatibleLLMClientTests(unittest.TestCase):
@@ -62,6 +65,7 @@ class OpenAICompatibleLLMClientTests(unittest.TestCase):
         self.assertEqual(citations, ())
 
     def test_web_mode_uses_responses_api_and_extracts_citations(self) -> None:
+        FakeOpenAI.initialization_count = 0
         config = LLMConfig(
             provider="openai",
             api_key="test-key",
@@ -79,12 +83,21 @@ class OpenAICompatibleLLMClientTests(unittest.TestCase):
                 web_access="open_known_urls",
                 max_output_tokens=256,
             ))
+            client.generate(LLMRequest(
+                system_prompt="只使用可信来源",
+                user_question="再次打开官方通知",
+                web_access="open_known_urls",
+                max_output_tokens=128,
+            ))
 
         self.assertIsNotNone(FakeOpenAI.instance)
+        self.assertEqual(FakeOpenAI.initialization_count, 1)
+        self.assertEqual(FakeOpenAI.instance.options["timeout"], 30)
+        self.assertEqual(FakeOpenAI.instance.options["max_retries"], 1)
         request = FakeOpenAI.instance.responses.last_request
         self.assertEqual(request["tools"], [{"type": "web_search"}])
         self.assertEqual(request["tool_choice"], "required")
-        self.assertEqual(request["max_output_tokens"], 256)
+        self.assertEqual(request["max_output_tokens"], 128)
         self.assertEqual(response.citations[0].title, "中国科大官方通知")
         self.assertEqual(response.citations[0].url, "https://www.ustc.edu.cn/notice")
 

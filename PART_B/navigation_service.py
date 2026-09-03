@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from hashlib import md5
 import logging
 import re
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 from config import load_knowledge_base_config, load_llm_config
 from knowledge_base import KnowledgeBase, Resource, build_knowledge_base
@@ -42,17 +42,16 @@ _RELATED_CANDIDATES_RESULT = (
     "未找到可直接确认的唯一答案，以下仅列出相关度达到高阈值的候选资源。"
 )
 _DEFAULT_TRUSTED_WEB_DOMAINS = ("ustc.edu.cn", "edu.cn", "gov.cn")
-_NAVIGATION_INTENT_TERMS = (
-    "预约", "入口", "登录", "登陆", "报名", "申请", "办理", "下载", "查询",
-    "缴费", "支付", "打印", "补办", "续借", "借阅", "选课", "退课", "报修",
-    "充值", "绑定", "认证",
+_WEAK_WEB_ANSWER_TERMS = (
+    "可能相关",
+    "也许相关",
+    "似乎相关",
+    "无法确认",
+    "未能确认",
+    "没有足够信息",
+    "未找到可信",
+    _NO_TRUSTED_RESULT,
 )
-_QUERY_FILLERS = (
-    "怎么", "怎样", "如何", "哪里", "在哪", "哪个", "哪些", "什么", "一下",
-    "请问", "我想", "我要", "需要", "可以", "是否", "有没有", "相关", "资源",
-)
-_CHINESE_TEXT_PATTERN = re.compile(r"[\u4e00-\u9fff]+")
-_ASCII_TEXT_PATTERN = re.compile(r"[a-z0-9]+")
 logger = logging.getLogger(__name__)
 
 
@@ -159,6 +158,7 @@ class ResourceNavigationService:
                 answer,
                 retrieval_limit,
                 conversation,
+                snapshot_is_exact=verdict == "exact",
             )
 
         related_resources = self._database_related_resources(
@@ -235,7 +235,14 @@ class ResourceNavigationService:
         snapshot_answer: str,
         retrieval_limit: int,
         conversation: tuple[str, ...],
+        *,
+        snapshot_is_exact: bool = False,
     ) -> NavigationAnswer:
+        snapshot_fallback = (
+            self._database_exact_answer(primary_resource, snapshot_answer)
+            if snapshot_is_exact and snapshot_answer
+            else None
+        )
         if self.page_reader is not None:
             try:
                 snapshot = self.page_reader.read(primary_resource.url)
@@ -245,18 +252,6 @@ class ResourceNavigationService:
                     primary_resource.id,
                 )
             else:
-                if self._is_direct_navigation_entry(
-                    question,
-                    primary_resource,
-                    snapshot,
-                ):
-                    return NavigationAnswer(
-                        answer=self._direct_navigation_answer(
-                            primary_resource,
-                            snapshot,
-                        ),
-                        resources=(primary_resource,),
-                    )
                 try:
                     response = self.llm_client.generate(
                         LLMRequest(
@@ -304,12 +299,14 @@ class ResourceNavigationService:
                         retrieval_limit,
                         conversation,
                         database_candidates_found=True,
+                        fallback=snapshot_fallback,
                     )
 
         if not self.llm_client.supports_web_search:
-            if snapshot_answer:
-                return self._database_exact_answer(primary_resource, snapshot_answer, ())
-            return NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+            return snapshot_fallback or NavigationAnswer(
+                answer=_NO_TRUSTED_RESULT,
+                resources=(),
+            )
 
         try:
             response = self.llm_client.generate(
@@ -360,6 +357,7 @@ class ResourceNavigationService:
             retrieval_limit,
             conversation,
             database_candidates_found=True,
+            fallback=snapshot_fallback,
         )
 
     def _database_exact_answer(
@@ -428,6 +426,11 @@ class ResourceNavigationService:
         if not web_resources:
             return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
         web_verdict = self._web_verdict(response.text)
+        answer = self._remove_web_control_markers(response.text)
+        if web_verdict is None and self._is_substantive_web_answer(answer):
+            # Tool citations are the trust boundary. A missing formatting marker
+            # should not discard an otherwise supported answer.
+            web_verdict = "related"
         logger.info(
             "Trusted web verdict=%s trusted_resource_count=%d",
             web_verdict or "missing",
@@ -439,10 +442,17 @@ class ResourceNavigationService:
         if web_verdict == "exact":
             primary_resource = self._web_primary_resource(web_resources, response.text)
             if primary_resource is None:
-                return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
-            selected_resources = (primary_resource,)
+                if len(web_resources) == 1 and self._is_substantive_web_answer(answer):
+                    primary_resource = web_resources[0]
+                elif self._is_substantive_web_answer(answer):
+                    # Keep a cited answer when the provider omitted or altered
+                    # the primary URL marker, without claiming unique certainty.
+                    web_verdict = "related"
+                else:
+                    return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+            if primary_resource is not None:
+                selected_resources = (primary_resource,)
         allowed_urls = tuple(resource.url for resource in selected_resources)
-        answer = self._remove_web_control_markers(response.text)
         answer = self._remove_unknown_urls(answer, allowed_urls)
         if not answer or _NO_TRUSTED_RESULT in answer:
             return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
@@ -513,17 +523,43 @@ class ResourceNavigationService:
         answer: str,
     ) -> Resource | None:
         match = _WEB_PRIMARY_URL_PATTERN.search(answer)
-        if not match:
-            return None
-        primary_url = self._normalize_url(match.group(1).strip())
-        return next(
-            (
-                resource
-                for resource in resources
-                if self._normalize_url(resource.url) == primary_url
-            ),
-            None,
+        candidate_urls = [match.group(1).strip()] if match else []
+        candidate_urls.extend(_URL_PATTERN.findall(
+            self._remove_web_control_markers(answer)
+        ))
+        for candidate_url in candidate_urls:
+            primary_url = self._normalize_url(candidate_url)
+            primary_resource = next(
+                (
+                    resource
+                    for resource in resources
+                    if self._same_web_page(resource.url, primary_url)
+                ),
+                None,
+            )
+            if primary_resource is not None:
+                return primary_resource
+        return None
+
+    @staticmethod
+    def _same_web_page(first_url: str, second_url: str) -> bool:
+        first = urlparse(ResourceNavigationService._normalize_url(first_url))
+        second = urlparse(ResourceNavigationService._normalize_url(second_url))
+        if first.geturl() == second.geturl():
+            return True
+        return (
+            first.netloc == second.netloc
+            and first.path == second.path
+            and first.path not in {"", "/"}
+            and (not first.query or not second.query)
         )
+
+    @staticmethod
+    def _is_substantive_web_answer(answer: str) -> bool:
+        if any(term in answer for term in _WEAK_WEB_ANSWER_TERMS):
+            return False
+        answer_without_urls = _URL_PATTERN.sub("", answer)
+        return len(_normalize_match_phrase(answer_without_urls)) >= 16
 
     def _visited_database_resources(
         self,
@@ -550,56 +586,6 @@ class ResourceNavigationService:
         return " ".join((*previous_user_messages, question)).strip()
 
     @staticmethod
-    def _is_direct_navigation_entry(
-        question: str,
-        resource: Resource,
-        snapshot: PageSnapshot,
-    ) -> bool:
-        lowered_question = question.lower()
-        intents = tuple(
-            term for term in _NAVIGATION_INTENT_TERMS if term in lowered_question
-        )
-        if not intents:
-            return False
-
-        evidence = " ".join((
-            resource.title,
-            snapshot.title,
-            snapshot.text[:2000],
-            unquote(snapshot.final_url),
-        )).lower()
-        if not any(intent in evidence for intent in intents):
-            return False
-
-        cleaned_question = lowered_question
-        for term in (*intents, *_QUERY_FILLERS):
-            cleaned_question = cleaned_question.replace(term, " ")
-        topic_terms: set[str] = {
-            word
-            for word in _ASCII_TEXT_PATTERN.findall(cleaned_question)
-            if len(word) >= 2
-        }
-        for sequence in _CHINESE_TEXT_PATTERN.findall(cleaned_question):
-            if len(sequence) >= 2:
-                topic_terms.add(sequence)
-                topic_terms.update(
-                    sequence[index:index + 2]
-                    for index in range(len(sequence) - 1)
-                )
-        return bool(topic_terms) and any(term in evidence for term in topic_terms)
-
-    @staticmethod
-    def _direct_navigation_answer(
-        resource: Resource,
-        snapshot: PageSnapshot,
-    ) -> str:
-        details = snapshot.text[:240].strip().rstrip("。；; ")
-        answer = f"已实时核实：该页面是“{resource.title}”入口。"
-        if details:
-            answer += f"页面当前显示：{details}。"
-        return f"{answer}请打开下方资源并按页面提示操作。"
-
-    @staticmethod
     def _build_database_verification_question(
         question: str,
         resources: list[Resource],
@@ -616,11 +602,19 @@ class ResourceNavigationService:
                 f"栏目：{resource.category}",
                 f"来源：{resource.source}",
                 f"权威标签：{resource.authority_label or '数据未提供'}",
+                f"数据处置：{resource.disposition or '数据未提供'}",
+                f"链接状态：{resource.url_status or '数据未提供'}",
+                f"访问说明：{resource.url_err or resource.access_notes or '数据未提供'}",
+                f"时效状态：{resource.info_status or resource.freshness or '数据未提供'}",
+                f"发布时间：{resource.published_at or '数据未提供'}",
                 f"摘要：{(resource.summary or '数据未提供')[:400]}",
+                f"内容要点：{'；'.join(resource.answerable_facts[:4])[:600] or '数据未提供'}",
                 f"获取方式：{(resource.how_to or '数据未提供')[:300]}",
                 f"费用：{resource.cost or '数据未提供'}",
                 f"标签：{'、'.join(resource.tags) or '数据未提供'}",
                 f"正文摘录：{(resource.content or '数据未提供')[:600]}",
+                "检索命中原文片段："
+                f"{_database_evidence_excerpt(question, resource) or '数据未提供'}",
             ]
             if resource.snapshot_version:
                 block_lines.extend((
@@ -644,18 +638,27 @@ class ResourceNavigationService:
             f"{database_context}\n\n"
             "[需要核实的数据库资源地址]\n"
             f"{exact_urls}\n\n"
-            "本阶段只根据数据库快照进行快速筛选，不调用网页工具，也不最终宣告数据库已经命中。请找出最可能"
-            "直接回答问题、值得进入下一步网页核验的唯一主资源，或列出少量高度相关资源；不要为了凑数量而采用"
-            "其他候选。对于询问服务入口、预约、办理位置等导航问题，候选标题与功能和用户目标高度一致时，可以"
-            "选为唯一待核验资源，即使正文快照为空。仅仅主题相近、属于同一栏目或业务部门，仍不能选为唯一资源。"
-            "涉及事实、步骤、数值等内容时，必须在摘要或正文摘录中存在相应信息，不能依靠常识或模型记忆补全。\n\n"
+            "本阶段只根据数据库快照进行快速筛选，不调用网页工具。数据库材料已经直接回答问题时可以形成快照"
+            "答案；否则请找出最可能直接回答问题、值得进入下一步网页核验的唯一主资源，或列出少量高度相关资源；"
+            "不要为了凑数量而采用其他候选。对于询问服务入口、预约、办理位置等导航问题，候选标题与功能和用户"
+            "目标高度一致时，可以选为唯一待核验资源，即使正文快照为空。仅仅主题相近、属于同一栏目或业务部门，"
+            "仍不能选为唯一资源。"
+            "用户明确写出的校区、地点、机构和服务对象必须全部一致；不得把同一校区内名称相近的另一种设施当成"
+            "目标，例如‘中区研修室’不能作为‘中区图书馆’的命中。"
+            "涉及事实、步骤、数值等内容时，必须在摘要、内容要点、正文摘录或检索命中原文片段中存在相应信息，"
+            "不能依靠常识或模型记忆补全。对于姓名、编号、术语等细节查询，原文逐字出现该对象可以证明‘该材料"
+            "提及该对象’，即使对象没有出现在标题中；但不得据此推断其现任身份、当前状态或材料未明确写出的属性。"
+            "通知末尾的统一反馈电话、邮箱不得归属于正文中的某个人，除非材料明确逐项标注；脱敏占位符也不得还原。\n\n"
             "输出必须严格遵守以下格式之一：\n"
-            "1. 存在唯一待核验主资源：第一行输出 [[DATABASE_VERDICT:VERIFY]]，第二行输出 "
+            "1. 数据库材料本身已直接、明确回答问题：第一行输出 [[DATABASE_VERDICT:EXACT]]，第二行输出 "
+            "[[DATABASE_PRIMARY_ID:资源ID]]，随后给出简洁答案。历史通知必须说明发布时间和证据范围，不得把历史"
+            "记录表述成当前事实。资源 ID 必须逐字复制自候选列表。\n"
+            "2. 材料尚不足以回答，但存在唯一值得打开网页核验的主资源：第一行输出 [[DATABASE_VERDICT:VERIFY]]，第二行输出 "
             "[[DATABASE_PRIMARY_ID:资源ID]]，不要输出回答正文。资源 ID 必须逐字复制自候选列表。\n"
-            "2. 没有唯一答案，但存在高度相关资源：第一行输出 [[DATABASE_VERDICT:RELATED]]，第二行输出 "
+            "3. 没有唯一答案，但存在高度相关资源：第一行输出 [[DATABASE_VERDICT:RELATED]]，第二行输出 "
             "[[DATABASE_RELATED_IDS:资源ID1,资源ID2]]。只列真正有助于用户目标的 ID，按相关度排序，最多 5 个；"
             "不要输出回答正文。\n"
-            "3. 没有高度相关资源：只输出 [[DATABASE_VERDICT:INSUFFICIENT]]，不要猜测答案或推荐候选。"
+            "4. 没有高度相关资源：只输出 [[DATABASE_VERDICT:INSUFFICIENT]]，不要猜测答案或推荐候选。"
         )
 
     @staticmethod
@@ -668,12 +671,19 @@ class ResourceNavigationService:
         return (
             f"[检索阶段] 唯一数据库资源网页核实\n\n最近对话：\n{history}\n\n当前问题：\n{question}\n\n"
             f"资源 ID：{resource.id}\n标题：{resource.title}\nURL：{resource.url}\n"
+            f"链接状态：{resource.url_status or '数据未提供'}\n"
+            f"访问说明：{resource.url_err or resource.access_notes or '数据未提供'}\n"
+            f"发布时间：{resource.published_at or '数据未提供'}\n"
             f"数据库摘要：{resource.summary or '数据未提供'}\n"
-            f"数据库正文摘录：{(resource.content or '数据未提供')[:2000]}\n\n"
+            f"数据库内容要点：{'；'.join(resource.answerable_facts[:6]) or '数据未提供'}\n"
+            f"数据库正文摘录：{(resource.content or '数据未提供')[:2000]}\n"
+            "数据库检索命中原文片段："
+            f"{_database_evidence_excerpt(question, resource, max_chars=2000) or '数据未提供'}\n\n"
             "只允许打开上面的确切 URL 并跟随该 URL 自身的重定向，不得搜索或采用其他来源。请核对打开后的页面"
             "是否直接包含回答问题所需的信息。对于资源导航、预约或办理入口问题，如果最终页面本身就是用户所需"
             "服务、登录页或功能入口，页面标题、功能和最终地址足以明确这一点，即可判定为包含答案，不要求另有说明"
-            "性正文。若核验通过，第一行输出 [[DATABASE_VERDICT:EXACT]]，第二行输出 "
+            "性正文。但问题中的校区、地点、机构和服务对象必须与页面逐项一致，不得用相近设施替代；存在任何对象"
+            "冲突都应判定为不足。若核验通过，第一行输出 [[DATABASE_VERDICT:EXACT]]，第二行输出 "
             f"[[DATABASE_PRIMARY_ID:{resource.id}]]，随后简洁概括页面并回答。若页面内容不足，只输出 "
             "[[DATABASE_VERDICT:INSUFFICIENT]]。"
         )
@@ -694,7 +704,9 @@ class ResourceNavigationService:
             f"[实时页面正文]\n{snapshot.text[:8000]}\n\n"
             "上方内容由后端刚刚访问数据库 URL 并跟随其重定向后提取。不得调用网页工具或采用其他来源。"
             "请判断该实时页面是否直接回答当前问题。对于资源导航、预约或办理入口问题，如果页面本身就是"
-            "对应服务或功能入口，即可判定为包含答案。核验通过时，第一行输出 "
+            "对应服务或功能入口，并且问题中的校区、地点、机构和服务对象与页面逐项一致，才可判定为包含答案。"
+            "名称相近、同处一个校区或功能相关不足以证明对象相同；例如‘中区研修室’不是‘中区图书馆’。"
+            "核验通过时，第一行输出 "
             "[[DATABASE_VERDICT:EXACT]]，第二行输出 "
             f"[[DATABASE_PRIMARY_ID:{resource.id}]]，随后简洁总结页面并回答；否则只输出 "
             "[[DATABASE_VERDICT:INSUFFICIENT]]。"
@@ -718,7 +730,9 @@ class ResourceNavigationService:
             f"[数据库核实结果] {database_status}\n\n"
             "必须使用网页搜索工具寻找能够直接支持答案的可信第一方来源。优先检索中国科学技术大学及其"
             "职能部门官方页面；必要时再使用政府、高校或相关权威机构页面。请实际打开采用的页面并核对正文，"
-            "不能把搜索结果摘要、标题相似或业务相关当作答案证据。输出必须遵守以下格式之一：\n"
+            "不能把搜索结果摘要、标题相似或业务相关当作答案证据。不得把用户明确指定的对象改写成相近设施；"
+            "如果用户问题的前提不成立，应使用官方名录或页面直接纠正，而不是推荐另一个对象。官方完整名录中"
+            "没有列出目标时，可以谨慎表述为‘官方当前列表未列出该对象’。输出应遵守以下格式之一：\n"
             "1. 单一页面足以支持唯一确定答案：第一行输出 [[WEB_VERDICT:EXACT]]，第二行输出 "
             "[[WEB_PRIMARY_URL:完整URL]]，随后简洁回答并只列这一项来源。\n"
             "2. 没有唯一答案但存在多个高度相关来源：第一行输出 [[WEB_VERDICT:RELATED]]，随后给出简洁导航，"
@@ -872,6 +886,53 @@ def _negative_phrase_matches(normalized_question: str, phrase: str) -> bool:
 
 def _normalize_match_phrase(value: str) -> str:
     return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _database_evidence_excerpt(
+    question: str,
+    resource: Resource,
+    *,
+    max_chars: int = 1200,
+) -> str:
+    """Return a query-centered excerpt from fields retained for retrieval."""
+    evidence_parts = tuple(dict.fromkeys(
+        value.strip()
+        for value in (resource.content, resource.search_text)
+        if value.strip()
+    ))
+    evidence = "\n".join(evidence_parts)
+    if not evidence or len(evidence) <= max_chars:
+        return evidence
+
+    normalized_evidence_chars: list[str] = []
+    original_positions: list[int] = []
+    for index, character in enumerate(evidence.lower()):
+        if character.isalnum():
+            normalized_evidence_chars.append(character)
+            original_positions.append(index)
+    normalized_evidence = "".join(normalized_evidence_chars)
+    normalized_question = _normalize_match_phrase(question)
+
+    match_index = normalized_evidence.find(normalized_question)
+    if match_index < 0:
+        max_fragment_length = min(len(normalized_question), 12)
+        for length in range(max_fragment_length, 1, -1):
+            for start in range(0, len(normalized_question) - length + 1):
+                fragment = normalized_question[start:start + length]
+                match_index = normalized_evidence.find(fragment)
+                if match_index >= 0:
+                    break
+            if match_index >= 0:
+                break
+
+    center = original_positions[match_index] if match_index >= 0 else 0
+    start = max(center - max_chars // 3, 0)
+    end = min(start + max_chars, len(evidence))
+    if end - start < max_chars:
+        start = max(end - max_chars, 0)
+    prefix = "..." if start else ""
+    suffix = "..." if end < len(evidence) else ""
+    return f"{prefix}{evidence[start:end]}{suffix}"
 
 
 def build_navigation_service() -> ResourceNavigationService:
