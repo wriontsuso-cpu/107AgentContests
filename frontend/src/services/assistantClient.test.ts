@@ -1,7 +1,55 @@
 import { describe, expect, it, vi } from 'vitest'
+import * as localCatalog from '@/data/localCatalog'
 import { closeAssistantSession, requestAssistant } from './assistantClient'
 
 describe('requestAssistant', () => {
+  it('answers pure greetings without loading the catalog or reusing old search topics', async () => {
+    const loadCatalog = vi.spyOn(localCatalog, 'loadLocalCatalog')
+    try {
+      for (const message of ['你好', '  您好呀！ ', '在吗？', '好的，谢谢', '再见', '你能做什么？', 'ＨＥＬＬＯ！', 'Thank you']) {
+        const response = await requestAssistant({
+          message,
+          history: [{ role: 'user', content: '图书馆怎么预约' }],
+        }, { useMocks: true })
+        expect(response.status).toBe('conversation')
+        expect(response.reply).not.toContain('未检索到')
+        expect(response.resources).toEqual([])
+        expect(response.clarifications).toEqual([])
+      }
+      expect(loadCatalog).not.toHaveBeenCalled()
+    } finally {
+      loadCatalog.mockRestore()
+    }
+  })
+
+  it('keeps mixed questions searchable and pure greetings out of task history', async () => {
+    const mixed = await requestAssistant({ message: '你好，请问图书馆怎么预约？', history: [] }, { useMocks: true })
+    expect(mixed.status).toBe('results')
+    expect(mixed.resources.length).toBeGreaterThan(0)
+    const request = { message: '我想参加科创竞赛', history: [] }
+    const fresh = await requestAssistant(request, { useMocks: true })
+    const afterGreeting = await requestAssistant({
+      ...request,
+      history: [{ role: 'user', content: '你好' }, { role: 'assistant', content: '你好！' }, { role: 'user', content: '谢谢' }],
+    }, { useMocks: true })
+    expect(afterGreeting).toEqual(fresh)
+  })
+
+  it('preserves backend conversation replies and session IDs without resource verification', async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ answer: '你好！有什么校园资源问题？', results: [], response_type: 'conversation', session_id: 'greeting-session' }),
+    })
+    const response = await requestAssistant({ message: '你好', history: [] }, {
+      apiBaseUrl: 'https://api.example.test', useMocks: false, fetcher: fetcher as typeof fetch,
+    })
+    expect(response.status).toBe('conversation')
+    expect(response.reply).toContain('你好')
+    expect(response.sessionId).toBe('greeting-session')
+    expect(response.resources).toEqual([])
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('returns a local guided response when no API base URL is configured', async () => {
     const first = await requestAssistant({ message: '我想参加科创竞赛', history: [] }, { apiBaseUrl: '' })
     expect(first.status).toBe('clarify')
@@ -40,6 +88,38 @@ describe('requestAssistant', () => {
 
     expect(timeout).toHaveBeenCalledWith(160_000)
     timeout.mockRestore()
+  })
+
+  it('streams real backend progress before returning the final answer', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"type":"progress","stage":"database_search","message":"正在检索校园资源库"}\n'))
+        controller.enqueue(encoder.encode('{"type":"progress","stage":"answer_verification","message":"当前正在确定资源页能否准确回答问题"}\n'))
+        controller.enqueue(encoder.encode('{"type":"result","data":{"answer":"已完成核实。","results":[],"session_id":"stream-1"}}\n'))
+        controller.close()
+      },
+    })
+    const fetcher = vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'application/x-ndjson' },
+    }))
+    const updates: { stage: string; message: string }[] = []
+
+    const response = await requestAssistant({
+      message: '查询校园资源',
+      history: [],
+      onProgress: (update) => updates.push(update),
+    }, {
+      apiBaseUrl: 'https://api.example.test',
+      useMocks: false,
+      fetcher: fetcher as typeof fetch,
+    })
+
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://api.example.test/api/search/stream')
+    expect(updates.map((update) => update.stage)).toEqual(['database_search', 'answer_verification'])
+    expect(response.reply).toBe('已完成核实。')
+    expect(response.sessionId).toBe('stream-1')
   })
 
   it('distinguishes a main request timeout from a missing backend', async () => {

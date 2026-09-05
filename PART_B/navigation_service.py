@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import md5
 import logging
 import re
+from typing import Literal
 from urllib.parse import urlparse
 
 from config import load_knowledge_base_config, load_llm_config
@@ -13,6 +15,7 @@ from knowledge_base import KnowledgeBase, Resource, build_knowledge_base
 from llm_client import LLMCitation, LLMClient, LLMRequest, build_llm_client
 from page_reader import HttpPageReader, PageReader, PageSnapshot
 from prompts import RESOURCE_NAVIGATION_SYSTEM_PROMPT
+from small_talk import small_talk_reply
 
 
 _URL_PATTERN = re.compile(r"https?://[^\s<>()\]）】》」』，。；、]+", re.IGNORECASE)
@@ -53,6 +56,7 @@ _WEAK_WEB_ANSWER_TERMS = (
     _NO_TRUSTED_RESULT,
 )
 logger = logging.getLogger(__name__)
+ProgressCallback = Callable[[str, str], None]
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,7 @@ class NavigationAnswer:
     answer: str
     resources: tuple[Resource, ...]
     clarifications: tuple[str, ...] = ()
+    response_type: Literal["navigation", "conversation"] = "navigation"
 
 
 class ResourceNavigationService:
@@ -88,14 +93,25 @@ class ResourceNavigationService:
         category: str | None = None,
         limit: int | None = None,
         conversation: tuple[str, ...] = (),
+        progress_callback: ProgressCallback | None = None,
     ) -> NavigationAnswer:
         normalized_question = question.strip()
         if not normalized_question:
             raise ValueError("Question cannot be empty.")
 
+        _emit_progress(progress_callback, "understanding", "正在理解你的问题")
+        conversational_reply = small_talk_reply(normalized_question)
+        if conversational_reply is not None:
+            return NavigationAnswer(
+                answer=conversational_reply,
+                resources=(),
+                response_type="conversation",
+            )
+
         retrieval_limit = min(max(limit or self.retrieval_limit, 1), 5)
         candidate_pool_limit = min(max(retrieval_limit * 2, 10), 20)
         retrieval_query = self._build_retrieval_query(normalized_question, conversation)
+        _emit_progress(progress_callback, "database_search", "正在检索校园资源库")
         resources = self.knowledge_base.search(
             retrieval_query,
             limit=candidate_pool_limit,
@@ -103,17 +119,24 @@ class ResourceNavigationService:
             minimum_score=self.retrieval_minimum_score,
         )
         if resources:
+            _emit_progress(
+                progress_callback,
+                "candidate_review",
+                f"已找到 {len(resources)} 条候选，正在核对资源内容",
+            )
             return self._answer_from_database_candidates(
                 normalized_question,
                 resources,
                 retrieval_limit,
                 conversation,
+                progress_callback,
             )
         return self._answer_from_trusted_web(
             normalized_question,
             retrieval_limit,
             conversation,
             database_candidates_found=False,
+            progress_callback=progress_callback,
         )
 
     def _answer_from_database_candidates(
@@ -122,9 +145,15 @@ class ResourceNavigationService:
         resources: list[Resource],
         retrieval_limit: int,
         conversation: tuple[str, ...],
+        progress_callback: ProgressCallback | None,
     ) -> NavigationAnswer:
         snapshot_answer = self._answer_from_trusted_snapshot(question, resources)
         if snapshot_answer is not None:
+            _emit_progress(
+                progress_callback,
+                "finalizing",
+                "已找到高可信资源快照，正在整理答案",
+            )
             return snapshot_answer
 
         response = self.llm_client.generate(
@@ -159,6 +188,7 @@ class ResourceNavigationService:
                 retrieval_limit,
                 conversation,
                 snapshot_is_exact=verdict == "exact",
+                progress_callback=progress_callback,
             )
 
         related_resources = self._database_related_resources(
@@ -186,6 +216,7 @@ class ResourceNavigationService:
             conversation,
             database_candidates_found=True,
             fallback=related_fallback,
+            progress_callback=progress_callback,
         )
 
     @staticmethod
@@ -237,6 +268,7 @@ class ResourceNavigationService:
         conversation: tuple[str, ...],
         *,
         snapshot_is_exact: bool = False,
+        progress_callback: ProgressCallback | None = None,
     ) -> NavigationAnswer:
         snapshot_fallback = (
             self._database_exact_answer(primary_resource, snapshot_answer)
@@ -244,6 +276,12 @@ class ResourceNavigationService:
             else None
         )
         if self.page_reader is not None:
+            resource_label = _progress_label(primary_resource.title)
+            _emit_progress(
+                progress_callback,
+                "page_fetch",
+                f"当前正在访问“{resource_label}”网页内容",
+            )
             try:
                 snapshot = self.page_reader.read(primary_resource.url)
             except Exception:
@@ -252,6 +290,11 @@ class ResourceNavigationService:
                     primary_resource.id,
                 )
             else:
+                _emit_progress(
+                    progress_callback,
+                    "answer_verification",
+                    f"当前正在确定“{resource_label}”能否准确回答问题",
+                )
                 try:
                     response = self.llm_client.generate(
                         LLMRequest(
@@ -300,6 +343,7 @@ class ResourceNavigationService:
                         conversation,
                         database_candidates_found=True,
                         fallback=snapshot_fallback,
+                        progress_callback=progress_callback,
                     )
 
         if not self.llm_client.supports_web_search:
@@ -309,6 +353,11 @@ class ResourceNavigationService:
             )
 
         try:
+            _emit_progress(
+                progress_callback,
+                "answer_verification",
+                f"正在继续核实“{_progress_label(primary_resource.title)}”",
+            )
             response = self.llm_client.generate(
                 LLMRequest(
                     system_prompt=RESOURCE_NAVIGATION_SYSTEM_PROMPT,
@@ -358,6 +407,7 @@ class ResourceNavigationService:
             conversation,
             database_candidates_found=True,
             fallback=snapshot_fallback,
+            progress_callback=progress_callback,
         )
 
     def _database_exact_answer(
@@ -397,10 +447,16 @@ class ResourceNavigationService:
         *,
         database_candidates_found: bool,
         fallback: NavigationAnswer | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> NavigationAnswer:
         if not self.llm_client.supports_web_search:
             return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
 
+        _emit_progress(
+            progress_callback,
+            "web_search",
+            f"当前正在联网检索“{_progress_label(question)}”的可信网页",
+        )
         try:
             response = self.llm_client.generate(
                 LLMRequest(
@@ -419,6 +475,11 @@ class ResourceNavigationService:
                 raise
             logger.exception("Web search failed; returning high-relevance database candidates")
             return fallback
+        _emit_progress(
+            progress_callback,
+            "source_review",
+            f"已找到 {len(response.citations)} 个联网来源，正在核对可信度",
+        )
         web_resources = self._trusted_web_resources(
             response.citations,
             retrieval_limit,
@@ -456,6 +517,7 @@ class ResourceNavigationService:
         answer = self._remove_unknown_urls(answer, allowed_urls)
         if not answer or _NO_TRUSTED_RESULT in answer:
             return fallback or NavigationAnswer(answer=_NO_TRUSTED_RESULT, resources=())
+        _emit_progress(progress_callback, "finalizing", "证据核实完成，正在整理导航结果")
         return NavigationAnswer(
             answer=answer,
             resources=selected_resources,
@@ -582,6 +644,7 @@ class ResourceNavigationService:
             message.removeprefix("用户：")
             for message in conversation
             if message.startswith("用户：")
+            and small_talk_reply(message.removeprefix("用户：")) is None
         )[-3:]
         return " ".join((*previous_user_messages, question)).strip()
 
@@ -886,6 +949,22 @@ def _negative_phrase_matches(normalized_question: str, phrase: str) -> bool:
 
 def _normalize_match_phrase(value: str) -> str:
     return "".join(character for character in value.lower() if character.isalnum())
+
+
+def _emit_progress(
+    callback: ProgressCallback | None,
+    stage: str,
+    message: str,
+) -> None:
+    if callback is not None:
+        callback(stage, message)
+
+
+def _progress_label(value: str, max_length: int = 32) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[:max_length].rstrip()}..."
 
 
 def _database_evidence_excerpt(

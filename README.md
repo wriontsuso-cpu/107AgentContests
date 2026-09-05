@@ -26,10 +26,10 @@
 | AI 可推荐资源 | 10091 条；后端进一步过滤 2291 条 `deprecate` 记录 |
 | 内容增强覆盖 | `content_info`、`search_text`、`weight`、`relevance_score`、审核与链接状态字段覆盖 100% 发布记录 |
 | 受限但有效的入口 | 保留 125 条需要登录或受限访问的资源，并在结果中提示访问条件 |
-| 自动化验证 | 199 项通过：后端 34、数据脚本 9、前端单元测试 119、桌面/移动端流程 37；另有 1 项按设备条件跳过 |
+| 自动化验证 | 207 项通过：后端 38、数据脚本 9、前端单元测试 123、桌面/移动端流程 37；另有 1 项按设备条件跳过 |
 | 产品形态 | 响应式资源目录、资源详情、AI 导航、引导式追问、本机搜索与会话历史、静态演示模式 |
 
-数据口径对应 2026-09-02 发布版本，当前代码提交为 `94c1c03`。
+数据口径对应 2026-09-02 发布版本，代码状态以仓库最新 `main` 为准。
 
 ## 核心优势
 
@@ -168,24 +168,29 @@ flowchart TD
 - 首页自然语言搜索；
 - 39 栏目的资源目录、标签筛选、分页和详情页；
 - 接近主流 LLM 网页的对话区、历史列表、新建与删除会话；
-- 引导式追问按钮、等待状态、超时提示和失败重试；
+- 引导式追问按钮、真实处理进度、超时提示和失败重试；
 - 桌面端与移动端响应式导航；
 - 访客搜索记录和本机档案隔离。
 
-当前账户是**浏览器本机档案原型，不是真正的云账户**。用户名、带随机盐的 PBKDF2-SHA-256 密码摘要、搜索记录和最近 5 个完整会话保存在 IndexedDB 中，不上传到项目服务器。清除浏览器站点数据会删除这些记录。未来部署服务器账户时，可沿 `AccountStore` 接口替换为后端持久化实现。
+当前账户是**浏览器本机档案原型，不是真正的云账户**。用户名、带随机盐的 PBKDF2-SHA-256 密码摘要、搜索记录和完整会话保存在 IndexedDB 中，不上传到项目服务器。应用不主动限制会话数量，实际容量取决于浏览器本地存储；清除浏览器站点数据会删除这些记录。未来部署服务器账户时，可沿 `AccountStore` 接口替换为后端持久化实现。
+
+## 日常用语与资源问答
+
+纯问候、感谢、告别和助手身份询问会得到简短回应，不调用模型、数据库检索或网页访问。“你好，请问图书馆怎么预约”这样的混合问题仍走数据库优先核验；“好的”“继续”仍结合原有需求处理。日常用语规则由前端演示和 Python 后端共用，问候会进入当前会话，但告别不会自动关闭会话。
 
 ## API
 
 ```text
 GET  /api/health                       健康状态、模型与资源数量
 POST /api/search                       数据库优先的问答与推荐
+POST /api/search/stream                带处理进度的流式问答与推荐
 GET  /api/resources                    资源搜索、筛选与分页
 GET  /api/resources/{id}               资源详情
 GET  /api/categories                   栏目与标签
 POST /api/sessions/{session_id}/exit   主动结束当前后端会话
 ```
 
-`POST /api/search` 支持最多 40 条前端历史消息。服务端会将最近上下文用于问题细化和检索，但当前完整历史仍由浏览器保存。
+`POST /api/search` 支持最多 40 条前端历史消息。`POST /api/search/stream` 接收相同请求体，以 NDJSON 依次返回数据库检索、网页访问、答案核实和可信联网等进度，最后返回与普通接口相同的结果。服务端会将最近上下文用于问题细化和检索，但当前完整历史仍由浏览器保存。
 
 ## 数据与分支
 
@@ -205,6 +210,8 @@ frontend/src/data/raw/resources.json
 `main` 使用面向产品的清理后数据；完整采集与增量处理代码位于 `数据补充与更新` 分支。字段变更以仓库根目录的 `数据接口规范.md` 为准。
 
 ## 快速开始
+
+需要 Git、Python 3.11 或更高版本、Node.js 20 或更高版本，以及 pnpm 9.15.5。请保留 `PART_B`、`frontend` 和 `data without log in` 的仓库相对位置；资源库已随 Git 提供，无需单独安装数据库服务器。
 
 ### 1. 获取项目
 
@@ -241,10 +248,10 @@ LLM_TRUSTED_WEB_DOMAINS=ustc.edu.cn,edu.cn,gov.cn
 KNOWLEDGE_BASE_PROVIDER=json
 KNOWLEDGE_BASE_MIN_SCORE=28
 KNOWLEDGE_BASE_TOP_K=5
-WEB_CORS_ORIGINS=http://localhost:5173
+WEB_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-模型提供商可选值为 `placeholder`、`openai`、`openai-compatible`、`deepseek`、`qwen`。API 文档启动后位于 `http://127.0.0.1:8000/docs`。
+模型提供商可选值为 `placeholder`、`openai`、`openai-compatible`、`deepseek`、`qwen`。API 文档启动后位于 `http://127.0.0.1:8000/docs`。本机 `.env` 已被 Git 忽略，不会随代码提交；默认数据路径会自动指向仓库中的发布 JSON，不要填写其他成员电脑上的绝对路径。
 
 ### 3. 启动前端
 
@@ -264,6 +271,14 @@ VITE_ASSISTANT_REQUEST_TIMEOUT_MS=160000
 ```
 
 默认访问 `http://localhost:5173`。不配置后端地址或设置 `VITE_USE_MOCKS=true` 时，网页使用内置发布目录和本地演示回答。
+
+### 4. 联调验证
+
+- 打开 `http://127.0.0.1:8000/api/health`，确认 `status` 为 `ok` 且 `resource_count` 大于 10000；
+- 在资源大厅搜索“图书馆”，再在 AI 页面分别输入“你好”和一个具体资源问题；
+- 页面显示演示模式时，检查 `VITE_API_BASE_URL` 与 `VITE_USE_MOCKS=false`；
+- 出现 CORS 错误时，将浏览器地址栏中的完整来源加入 `WEB_CORS_ORIGINS`；
+- 修改后端 `.env` 或前端环境配置后，需要重新启动对应服务。
 
 ## 部署方式
 

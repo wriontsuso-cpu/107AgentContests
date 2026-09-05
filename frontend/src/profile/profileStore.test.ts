@@ -58,7 +58,7 @@ describe('IndexedDB account store', () => {
     await expect(store.createAccount('valid-user', '        ')).rejects.toThrow('密码不能全部为空白')
   })
 
-  it('isolates accounts and retains only the five most recent conversations', async () => {
+  it('isolates accounts and retains every saved conversation', async () => {
     const store = createStore()
     const first = await store.createAccount('account-one', 'password-one')
     const second = await store.createAccount('account-two', 'password-two')
@@ -80,7 +80,7 @@ describe('IndexedDB account store', () => {
       updatedAt: '2026-08-25T00:01:00.000Z',
     })
 
-    expect((await store.listConversations(first.id)).map((item) => item.title)).toEqual(['会话 6', '会话 5', '会话 4', '会话 3', '会话 2'])
+    expect((await store.listConversations(first.id)).map((item) => item.title)).toEqual(['会话 6', '会话 5', '会话 4', '会话 3', '会话 2', '会话 1'])
     expect(await store.listConversations(second.id)).toHaveLength(1)
   })
 

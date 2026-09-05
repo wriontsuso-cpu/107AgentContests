@@ -1,7 +1,8 @@
 import { Bot, UserRound } from 'lucide-react'
 import AccountAvatar from '@/components/account/AccountAvatar'
 import type { LocalAccount } from '@/profile/types'
-import type { AssistantResponse } from '@/services/assistantClient'
+import type { AssistantProgressUpdate, AssistantResponse } from '@/services/assistantClient'
+import AssistantProgress from './AssistantProgress'
 import NeedClarifier from './NeedClarifier'
 import ResourceRecommendation from './ResourceRecommendation'
 import MarkdownMessage from './MarkdownMessage'
@@ -17,12 +18,23 @@ interface ConversationProps {
   account?: LocalAccount | null
   messages: ConversationMessage[]
   loading: boolean
+  progress?: AssistantProgressUpdate[]
+  elapsedSeconds?: number
   error?: string
   onClarify: (value: string) => void
   onRetry: () => void
 }
 
-export default function Conversation({ account, messages, loading, error, onClarify, onRetry }: ConversationProps) {
+export default function Conversation({
+  account,
+  messages,
+  loading,
+  progress = [],
+  elapsedSeconds = 0,
+  error,
+  onClarify,
+  onRetry,
+}: ConversationProps) {
   return (
     <div className="conversation" aria-live="polite">
       {messages.map((message) => (
@@ -48,7 +60,7 @@ export default function Conversation({ account, messages, loading, error, onClar
           </div>
         </article>
       ))}
-      {loading && <div className="assistant-loading"><i /><i /><i /><span>正在梳理你的需求…</span></div>}
+      {loading && <AssistantProgress updates={progress} elapsedSeconds={elapsedSeconds} />}
       {error && (
         <div className="assistant-error" role="alert">
           <span>{error}</span>

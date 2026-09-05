@@ -64,6 +64,12 @@ textarea {
   margin-inline: auto;
 }
 
+.site-header__inner,
+.assistant-canvas__hero,
+.assistant-workspace {
+  width: min(1600px, calc(100% - 48px));
+}
+
 .skip-link {
   position: fixed;
   z-index: 100;
@@ -86,6 +92,7 @@ textarea {
   z-index: 50;
   top: 0;
   border-bottom: 1px solid rgba(16, 33, 61, 0.08);
+  color: #071b33;
   background: color-mix(in srgb, var(--paper) 88%, transparent);
   backdrop-filter: blur(18px);
 }
@@ -103,6 +110,7 @@ textarea {
   align-items: center;
   gap: 11px;
   flex-shrink: 0;
+  color: #071b33;
 }
 
 .brand-mark img {
@@ -117,16 +125,17 @@ textarea {
 }
 
 .brand-mark__type strong {
-  font-size: 15px;
+  color: #071b33;
+  font-size: 18px;
   font-weight: 760;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 
 .brand-mark__type small {
   margin-top: 5px;
   color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.13em;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 
 .site-nav {
@@ -139,7 +148,7 @@ textarea {
   position: relative;
   padding: 12px 15px;
   color: #4c5b73;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 560;
 }
 
@@ -173,7 +182,7 @@ textarea {
   gap: 8px;
   min-height: 44px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 650;
 }
 
@@ -1014,9 +1023,15 @@ textarea {
 .assistant-page {
   min-height: calc(100vh - 78px);
   padding-bottom: 110px;
+  font-size: 17px;
   background:
     radial-gradient(circle at 85% 0%, rgba(64, 200, 208, 0.09), transparent 27%),
     var(--paper);
+}
+
+.assistant-page .eyebrow {
+  font-size: 13px;
+  letter-spacing: 0;
 }
 
 .assistant-header {
@@ -1045,7 +1060,7 @@ textarea {
 .assistant-header p {
   margin: 0;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .assistant-mode {
@@ -1058,7 +1073,7 @@ textarea {
   border-radius: 999px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.55);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .assistant-mode i {
@@ -1094,9 +1109,9 @@ textarea {
   min-height: 62px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .assistant-chat__toolbar button {
@@ -1106,7 +1121,7 @@ textarea {
   border: 0;
   color: var(--ustc-blue);
   background: transparent;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -1125,7 +1140,7 @@ textarea {
   color: #47566e;
   background: var(--paper);
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: border-color 160ms ease, color 160ms ease;
 }
@@ -1180,13 +1195,13 @@ textarea {
   display: block;
   margin-bottom: 7px;
   color: #8a94a3;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .message__body > p {
   margin: 0;
   color: #35445c;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.85;
 }
 
@@ -1212,7 +1227,7 @@ textarea {
   border-radius: 999px;
   color: var(--ustc-blue);
   background: white;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -1234,7 +1249,7 @@ textarea {
 
 .assistant-resource > span {
   color: var(--ustc-blue);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .assistant-resource > strong {
@@ -1242,7 +1257,7 @@ textarea {
   margin: 11px 0 7px;
   color: #17324c;
   font-family: var(--serif);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.45;
 }
 
@@ -1251,7 +1266,7 @@ textarea {
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.65;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -1261,14 +1276,14 @@ textarea {
   display: block;
   margin-top: 9px;
   color: #5b6b7f;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .assistant-resource__access {
   display: block;
   margin-top: 9px;
   color: #8b5a1f;
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 680;
 }
@@ -1286,7 +1301,7 @@ textarea {
   gap: 5px;
   padding-left: 47px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .assistant-loading i {
@@ -1315,7 +1330,7 @@ textarea {
   border-radius: 7px;
   color: #913b3b;
   background: #fff1ef;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .assistant-error button {
@@ -1348,7 +1363,7 @@ textarea {
   outline: 0;
   color: var(--ink);
   background: transparent;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.55;
 }
 
@@ -1372,7 +1387,7 @@ textarea {
 .prompt-composer > span {
   grid-column: 1 / -1;
   color: #9ba3af;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .need-board {
@@ -2417,7 +2432,7 @@ textarea {
   border-radius: 999px;
   color: var(--deep-blue);
   background: rgba(255, 255, 255, 0.68);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .site-nav__avatar { width: 24px; height: 24px; flex: 0 0 24px; font-size: 10px; }
@@ -2438,8 +2453,8 @@ textarea {
 .assistant-history-toggle { display: none !important; }
 .assistant-chat__toolbar > div { display: flex; align-items: center; gap: 8px; }
 .assistant-chat__toolbar > div:first-child { display: grid; gap: 3px; }
-.assistant-chat__toolbar small { color: #8a94a3; font-size: 9px; font-weight: 500; letter-spacing: 0; }
-.assistant-storage-warning { margin: 14px 0 0; color: #875c16; font-size: 11px; }
+.assistant-chat__toolbar small { color: #8a94a3; font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.assistant-storage-warning { margin: 14px 0 0; color: #875c16; font-size: 13px; }
 .conversation-history {
   padding: 20px;
   border: 1px solid var(--line);

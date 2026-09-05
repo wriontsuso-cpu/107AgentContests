@@ -1,4 +1,5 @@
 import { loadLocalCatalog } from '@/data/localCatalog'
+import smallTalkRules from '@/data/raw/assistantSmallTalk.json'
 import type { Resource, ResourceAccessStatus } from '@/domain/resource'
 import { getCategory, resolveCategory, RESOURCE_CATEGORIES, type ResourceCategoryId } from '@/domain/categories'
 import { searchResources } from '@/lib/resourceSearch'
@@ -13,6 +14,12 @@ export interface AssistantRequest {
   history: AssistantHistoryMessage[]
   category?: string
   sessionId?: string
+  onProgress?: (update: AssistantProgressUpdate) => void
+}
+
+export interface AssistantProgressUpdate {
+  stage: string
+  message: string
 }
 
 export interface AssistantResource {
@@ -26,7 +33,7 @@ export interface AssistantResource {
 }
 
 export interface AssistantResponse {
-  status: 'clarify' | 'results' | 'no_answer'
+  status: 'clarify' | 'results' | 'no_answer' | 'conversation'
   reply: string
   clarifications: string[]
   resources: AssistantResource[]
@@ -104,9 +111,33 @@ function toAssistantResource(resource: Resource): AssistantResource | undefined 
   }
 }
 
+function normalizeSmallTalk(message: string): string {
+  return message.normalize('NFKC').toLowerCase().replace(/[\s\p{P}~]/gu, '')
+}
+
+const smallTalkReplies = new Map(smallTalkRules.flatMap((rule) => (
+  rule.phrases.map((phrase) => [normalizeSmallTalk(phrase), rule.reply] as const)
+)))
+
+function smallTalkReply(message: string): string | undefined {
+  return smallTalkReplies.get(normalizeSmallTalk(message))
+}
+
 async function localDemo(request: AssistantRequest): Promise<AssistantResponse> {
+  const conversationalReply = smallTalkReply(request.message)
+  if (conversationalReply !== undefined) {
+    return {
+      status: 'conversation',
+      reply: conversationalReply,
+      clarifications: [],
+      resources: [],
+      clues: [],
+    }
+  }
+
   const localResources = await loadLocalCatalog()
-  const conversation = [...request.history.filter((item) => item.role === 'user').map((item) => item.content), request.message].join(' ')
+  const userHistory = request.history.filter((item) => item.role === 'user' && smallTalkReply(item.content) === undefined)
+  const conversation = [...userHistory.map((item) => item.content), request.message].join(' ')
   const category = inferCategory(conversation)
   const categoryInfo = category ? getCategory(category) : undefined
   const matched = searchResources(localResources, { query: conversation, category })
@@ -126,7 +157,7 @@ async function localDemo(request: AssistantRequest): Promise<AssistantResponse> 
     }
   }
 
-  const isFollowUp = request.history.some((item) => item.role === 'user')
+  const isFollowUp = userHistory.length > 0
   const isBroad = !isFollowUp && (request.message.length < 12 || /想|项目|机会|帮我/.test(request.message))
   return {
     status: isBroad ? 'clarify' : recommendations.length > 0 ? 'results' : 'no_answer',
@@ -217,51 +248,124 @@ async function mapVerifiedResult(value: unknown, apiBaseUrl: string, fetcher: ty
   }
 }
 
+function searchRequestBody(request: AssistantRequest): string {
+  return JSON.stringify({
+    query: request.message,
+    top_k: 5,
+    category: request.category ?? null,
+    session_id: request.sessionId,
+    history: request.history.slice(-40),
+  })
+}
+
+async function readStreamingPayload(
+  response: Response,
+  onProgress: (update: AssistantProgressUpdate) => void,
+): Promise<unknown> {
+  if (!response.body) throw new Error('invalid response')
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result: unknown
+
+  const consumeLine = (line: string) => {
+    if (!line.trim()) return
+    const event: unknown = JSON.parse(line)
+    if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('invalid response')
+    const row = event as RemoteResult
+    if (row.type === 'progress') {
+      const stage = asText(row.stage)
+      const message = asText(row.message)
+      if (stage && message) onProgress({ stage, message })
+      return
+    }
+    if (row.type === 'result') {
+      result = row.data
+      return
+    }
+    if (row.type === 'error') {
+      const status = Number(row.status)
+      throw new Error(Number.isFinite(status) ? `HTTP ${status}` : asText(row.message) || 'stream error')
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) consumeLine(line)
+    if (done) break
+  }
+  consumeLine(buffer)
+  if (result === undefined) throw new Error('invalid response')
+  return result
+}
+
+async function mapRemotePayload(
+  payload: unknown,
+  apiBaseUrl: string,
+  fetcher: typeof fetch,
+  request: AssistantRequest,
+): Promise<AssistantResponse> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid response')
+  const row = payload as RemoteResult
+  const remoteResults = Array.isArray(row.results) ? row.results : []
+  const verificationResults = await Promise.allSettled(remoteResults.map((item) => mapVerifiedResult(
+    item,
+    apiBaseUrl,
+    fetcher,
+  )))
+  const verifiedResources = verificationResults
+    .filter((result): result is PromiseFulfilledResult<AssistantResource | undefined> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((item): item is AssistantResource => Boolean(item))
+  const clarifications = Array.isArray(row.clarifications) ? row.clarifications.map(asText).filter(Boolean) : []
+  const reply = asText(row.answer) || (verifiedResources.length > 0
+    ? '我找到了几项可核验的校园资源。'
+    : '暂时没有找到可核验的资源，请换一种说法再试。')
+  return {
+    status: clarifications.length > 0 ? 'clarify' : verifiedResources.length > 0 ? 'results'
+      : row.response_type === 'conversation' && asText(row.answer) ? 'conversation' : 'no_answer',
+    reply,
+    clarifications,
+    resources: verifiedResources,
+    clues: request.category ? [request.category] : [],
+    sessionId: asText(row.session_id) || undefined,
+  }
+}
+
 export async function requestAssistant(request: AssistantRequest, options: ClientOptions = {}): Promise<AssistantResponse> {
   const apiBaseUrl = options.apiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? ''
   const useMocks = options.useMocks ?? (import.meta.env.VITE_USE_MOCKS === 'true' || !apiBaseUrl)
   if (useMocks) return localDemo(request)
 
   const fetcher = options.fetcher ?? fetch
+  const normalizedBaseUrl = apiBaseUrl.replace(/\/$/, '')
+  const headers = { 'Content-Type': 'application/json' }
+  const body = searchRequestBody(request)
   try {
-    const response = await fetcher(`${apiBaseUrl.replace(/\/$/, '')}/api/search`, {
+    let response = await fetcher(`${normalizedBaseUrl}${request.onProgress ? '/api/search/stream' : '/api/search'}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: request.message,
-        top_k: 5,
-        category: request.category ?? null,
-        session_id: request.sessionId,
-        history: request.history.slice(-40),
-      }),
+      headers,
+      body,
       signal: AbortSignal.timeout(configuredAssistantTimeout()),
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const payload: unknown = await response.json()
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid response')
-    const row = payload as RemoteResult
-    const remoteResults = Array.isArray(row.results) ? row.results : []
-    const verificationResults = await Promise.allSettled(remoteResults.map((item) => mapVerifiedResult(
-      item,
-      apiBaseUrl.replace(/\/$/, ''),
-      fetcher,
-    )))
-    const verifiedResources = verificationResults
-      .filter((result): result is PromiseFulfilledResult<AssistantResource | undefined> => result.status === 'fulfilled')
-      .map((result) => result.value)
-      .filter((item): item is AssistantResource => Boolean(item))
-    const clarifications = Array.isArray(row.clarifications) ? row.clarifications.map(asText).filter(Boolean) : []
-    const reply = asText(row.answer) || (verifiedResources.length > 0
-      ? '我找到了几项可核验的校园资源。'
-      : '暂时没有找到可核验的资源，请换一种说法再试。')
-    return {
-      status: clarifications.length > 0 ? 'clarify' : verifiedResources.length > 0 ? 'results' : 'no_answer',
-      reply,
-      clarifications,
-      resources: verifiedResources,
-      clues: request.category ? [request.category] : [],
-      sessionId: asText(row.session_id) || undefined,
+    if (request.onProgress && [404, 405].includes(response.status)) {
+      response = await fetcher(`${normalizedBaseUrl}/api/search`, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(configuredAssistantTimeout()),
+      })
     }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const isStreamingResponse = request.onProgress && response.headers?.get('content-type')?.includes('application/x-ndjson')
+    const payload = isStreamingResponse
+      ? await readStreamingPayload(response, request.onProgress!)
+      : await response.json()
+    return await mapRemotePayload(payload, normalizedBaseUrl, fetcher, request)
   } catch (reason) {
     throw assistantRequestError(reason)
   }

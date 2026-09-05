@@ -58,7 +58,7 @@ describe('AssistantPage', () => {
     }) as AssistantClient
     renderPage(client, store)
 
-    await screen.findByText('陈泰然 · 自动保存最近 5 次')
+    await screen.findByText('陈泰然')
     await user.type(screen.getByRole('textbox', { name: '描述你的需求' }), '查询校医院')
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
