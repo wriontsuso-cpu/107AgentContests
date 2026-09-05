@@ -1,4 +1,5 @@
 import type { AccountStore, LocalAccount, LocalSearchRecord, StoredConversation } from './types'
+import { randomUuid } from '@/lib/randomUuid'
 
 const DATABASE_VERSION = 3
 const ACCOUNT_STORE = 'accounts'
@@ -119,7 +120,7 @@ export function createIndexedDbAccountStore(options: { databaseName?: string } =
       const salt = crypto.getRandomValues(new Uint8Array(16))
       const now = new Date().toISOString()
       const account: LocalAccount = {
-        id: crypto.randomUUID(),
+        id: randomUuid(),
         username,
         normalizedUsername,
         passwordHash: await derivePassword(password, salt),
@@ -216,7 +217,7 @@ export function createIndexedDbAccountStore(options: { databaseName?: string } =
     async saveSearch(accountId, query) {
       const normalizedQuery = query.trim()
       if (!normalizedQuery) throw new Error('搜索内容不能为空')
-      const search: LocalSearchRecord = { id: crypto.randomUUID(), accountId, query: normalizedQuery, createdAt: new Date().toISOString() }
+      const search: LocalSearchRecord = { id: randomUuid(), accountId, query: normalizedQuery, createdAt: new Date().toISOString() }
       const db = await database()
       const transaction = db.transaction(SEARCH_STORE, 'readwrite')
       transaction.objectStore(SEARCH_STORE).put(search)
