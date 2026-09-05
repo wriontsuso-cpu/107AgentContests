@@ -1,6 +1,7 @@
 import { History, Lightbulb, RotateCcw, Search, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PageTransition from '@/components/PageTransition'
+import { randomUuid } from '@/lib/randomUuid'
 import Conversation, { type ConversationMessage } from '@/components/assistant/Conversation'
 import PromptComposer from '@/components/assistant/PromptComposer'
 import CanvasPage from '@/components/visual/CanvasPage'
@@ -38,7 +39,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
   const [sessionId, setSessionId] = useState<string>()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyQuery, setHistoryQuery] = useState('')
-  const conversationId = useRef<string>(crypto.randomUUID())
+  const conversationId = useRef<string>(randomUuid())
   const conversationCreatedAt = useRef(new Date().toISOString())
   const historyToggleRef = useRef<HTMLButtonElement>(null)
   const historySearchRef = useRef<HTMLInputElement>(null)
@@ -150,9 +151,12 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     setError(undefined)
     setLastMessage('')
     setSessionId(undefined)
+
     setProgress([])
     setElapsedSeconds(0)
-    conversationId.current = crypto.randomUUID()
+    
+    conversationId.current = randomUuid()
+
     conversationCreatedAt.current = new Date().toISOString()
     if (activeSessionId) void closeAssistantSession(activeSessionId).catch(() => undefined)
   }
