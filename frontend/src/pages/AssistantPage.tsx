@@ -13,6 +13,7 @@ import {
   requestAssistant,
   type AssistantClient,
   type AssistantHistoryMessage,
+  type AssistantProgressUpdate,
 } from '@/services/assistantClient'
 import { useAccount } from '@/profile/AccountContext'
 import type { StoredConversation } from '@/profile/types'
@@ -31,6 +32,8 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
   const { activeAccount, conversations, storageAvailable, saveConversation, deleteConversation, pendingGuestConversation, offerGuestConversation, clearGuestConversation } = useAccount()
   const [messages, setMessages] = useState<ConversationMessage[]>([openingMessage])
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState<AssistantProgressUpdate[]>([])
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState<string>()
   const [lastMessage, setLastMessage] = useState('')
   const [sessionId, setSessionId] = useState<string>()
@@ -59,6 +62,15 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [historyOpen])
+
+  useEffect(() => {
+    if (!loading) return
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [loading])
 
   function closeHistory() {
     setHistoryOpen(false)
@@ -91,11 +103,22 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     const userMessage: ConversationMessage = { id: `user-${Date.now()}`, role: 'user', content: message }
     setMessages((current) => [...current, userMessage])
     setLastMessage(message)
+    setProgress([{ stage: 'understanding', message: '正在梳理你的需求…' }])
+    setElapsedSeconds(0)
     setLoading(true)
     setError(undefined)
 
     try {
-      const response = await client({ message, history, sessionId })
+      const response = await client({
+        message,
+        history,
+        sessionId,
+        onProgress: (update) => setProgress((current) => {
+          const previous = current.at(-1)
+          if (previous?.stage === update.stage && previous.message === update.message) return current
+          return [...current, update].slice(-8)
+        }),
+      })
       if (response.sessionId) setSessionId(response.sessionId)
       const assistantMessage: ConversationMessage = {
         id: `assistant-${Date.now()}`,
@@ -128,7 +151,12 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     setError(undefined)
     setLastMessage('')
     setSessionId(undefined)
+
+    setProgress([])
+    setElapsedSeconds(0)
+    
     conversationId.current = randomUuid()
+
     conversationCreatedAt.current = new Date().toISOString()
     if (activeSessionId) void closeAssistantSession(activeSessionId).catch(() => undefined)
   }
@@ -139,6 +167,8 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
     conversationId.current = conversation.id
     conversationCreatedAt.current = conversation.createdAt
     setSessionId(undefined)
+    setProgress([])
+    setElapsedSeconds(0)
     setError(undefined)
     setHistoryOpen(false)
     if (activeSessionId) void closeAssistantSession(activeSessionId).catch(() => undefined)
@@ -168,7 +198,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
               <button type="button" aria-label="收起最近会话" onClick={closeHistory}><X size={18} /></button>
             </div>
             <section className="conversation-history" aria-label="最近会话">
-              <header><History size={17} /><div><span>最近会话</span><small>{activeAccount ? '最多保留 5 次' : '登录后保存'}</small></div></header>
+              <header><History size={17} /><div><span>最近会话</span>{!activeAccount && <small>登录后保存</small>}</div></header>
               <label className="conversation-history__search">
                 <Search size={14} />
                 <input
@@ -194,7 +224,7 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
           {historyOpen && <button className="assistant-history-backdrop" type="button" aria-label="关闭会话抽屉背景" onClick={closeHistory} />}
           <section className="assistant-reading-surface">
             <div className="assistant-chat__toolbar">
-              <div><span>需求对话</span><small>{activeAccount ? `${activeAccount.username} · 自动保存最近 5 次` : '访客模式 · 对话不会保存'}</small></div>
+              <div><span>需求对话</span><small>{activeAccount ? activeAccount.username : '访客模式 · 对话不会保存'}</small></div>
               <div>
                 <button
                   className="assistant-history-toggle"
@@ -218,7 +248,16 @@ export default function AssistantPage({ client = requestAssistant }: AssistantPa
                 {assistantStarterPrompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)}>{prompt}</button>)}
               </div>
             )}
-            <Conversation account={activeAccount} messages={messages} loading={loading} error={error} onClarify={sendMessage} onRetry={() => sendMessage(lastMessage)} />
+            <Conversation
+              account={activeAccount}
+              messages={messages}
+              loading={loading}
+              progress={progress}
+              elapsedSeconds={elapsedSeconds}
+              error={error}
+              onClarify={sendMessage}
+              onRetry={() => sendMessage(lastMessage)}
+            />
             <PromptComposer onSubmit={sendMessage} disabled={loading} />
           </section>
         </div>

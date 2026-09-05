@@ -67,7 +67,7 @@ describe('ProfilePage', () => {
 
     expect(await screen.findByRole('heading', { name: '你好，余伊健' })).toBeInTheDocument()
     expect(screen.getByText('云端账户已连接')).toBeInTheDocument()
-    expect(screen.getByText('最近同步 0 / 5 次会话')).toBeInTheDocument()
+    expect(screen.getByText('已同步 0 次会话')).toBeInTheDocument()
   })
 
   it('logs out and uses a generic error before accepting valid credentials', async () => {

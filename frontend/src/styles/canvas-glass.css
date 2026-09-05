@@ -625,7 +625,7 @@
   border-bottom: 1px solid rgb(255 255 255 / 14%);
 }
 
-.assistant-history-rail__topline span { display: inline-flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: .08em; }
+.assistant-history-rail__topline span { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; letter-spacing: 0; }
 .assistant-history-rail__topline button { display: none; place-items: center; width: 30px; height: 30px; border: 0; color: #fff; background: transparent; cursor: pointer; }
 .assistant-history-rail--open .assistant-history-rail__topline button { display: grid; }
 .assistant-history-rail > .conversation-history,
@@ -702,6 +702,68 @@
   background: transparent;
 }
 
+.assistant-progress {
+  width: min(760px, calc(100% - 47px));
+  margin: 2px 0 10px 47px;
+  padding: 16px 18px;
+  border: 1px solid rgb(162 225 227 / 24%);
+  border-left: 3px solid rgb(151 224 226 / 82%);
+  border-radius: 6px;
+  color: rgb(255 255 255 / 88%);
+  background: rgb(3 18 43 / 38%);
+  box-shadow: 0 12px 32px rgb(3 18 43 / 14%);
+  backdrop-filter: blur(12px) saturate(112%);
+  -webkit-backdrop-filter: blur(12px) saturate(112%);
+}
+
+.assistant-progress__current {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.assistant-progress__current-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgb(168 229 228 / 28%);
+  border-radius: 50%;
+  color: #bcebec;
+  background: rgb(168 229 228 / 9%);
+  animation: assistant-progress-breathe 1.5s ease-in-out infinite;
+}
+
+.assistant-progress__current > div { display: grid; gap: 4px; min-width: 0; }
+.assistant-progress__current strong { color: #fff; font-size: 15px; font-weight: 680; line-height: 1.45; }
+.assistant-progress__current > div > span { color: rgb(255 255 255 / 52%); font-size: 11px; line-height: 1.45; }
+
+.assistant-progress__history {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0 0 48px;
+  padding: 12px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+  list-style: none;
+}
+
+.assistant-progress__history li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  color: rgb(255 255 255 / 56%);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.assistant-progress__history svg { color: #8ed5d7; }
+
+@keyframes assistant-progress-breathe {
+  50% { border-color: rgb(168 229 228 / 62%); background: rgb(168 229 228 / 16%); }
+}
+
 .assistant-history-backdrop {
   position: fixed;
   z-index: 89;
@@ -712,7 +774,7 @@
   backdrop-filter: blur(2px);
 }
 
-.markdown-message { max-width: 76ch; color: rgb(255 255 255 / 88%); font-size: 14px; line-height: 1.9; }
+.markdown-message { max-width: 82ch; color: rgb(255 255 255 / 90%); font-size: 16px; line-height: 1.85; }
 .markdown-message > :first-child { margin-top: 0; }
 .markdown-message > :last-child { margin-bottom: 0; }
 .markdown-message h1,
@@ -720,7 +782,7 @@
 .markdown-message h3 { margin: 1.5em 0 .55em; color: #fff; font-family: var(--serif); line-height: 1.3; letter-spacing: -.02em; }
 .markdown-message h1 { font-size: 25px; }
 .markdown-message h2 { font-size: 21px; }
-.markdown-message h3 { font-size: 17px; }
+.markdown-message h3 { font-size: 18px; }
 .markdown-message p { margin: .65em 0; }
 .markdown-message strong { color: #fff; font-weight: 720; }
 .markdown-message ul,
@@ -730,7 +792,7 @@
 .markdown-message pre { overflow-x: auto; padding: 15px 17px; border-left: 2px solid rgb(142 206 210 / 72%); background: rgb(3 18 43 / 48%); }
 .markdown-message pre code { padding: 0; background: transparent; }
 .markdown-message a { color: #a8e5e4; text-underline-offset: 3px; }
-.markdown-message table { width: 100%; margin: 1em 0; border-collapse: collapse; font-size: 12px; }
+.markdown-message table { width: 100%; margin: 1em 0; border-collapse: collapse; font-size: 14px; }
 .markdown-message th,
 .markdown-message td { padding: 8px 10px; border-bottom: 1px solid rgb(255 255 255 / 16%); text-align: left; }
 .markdown-message th { color: #fff; }
@@ -824,5 +886,7 @@
   .assistant-reading-surface .message__avatar { width: 28px; height: 28px; }
   .assistant-reading-surface .message__body { padding: 11px 12px 13px; }
   .assistant-reading-surface .message--user .message__body { max-width: 94%; }
+  .assistant-progress { width: 100%; margin-left: 0; padding: 14px; }
+  .assistant-progress__history { margin-left: 0; }
   .assistant-cloud-cat { top: 184px; right: 18px; width: 74px; opacity: .66; }
 }

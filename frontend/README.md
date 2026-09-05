@@ -47,7 +47,11 @@ VITE_USE_MOCKS=false
 GET  {VITE_API_BASE_URL}/api/resources
 GET  {VITE_API_BASE_URL}/api/resources/{id}
 POST {VITE_API_BASE_URL}/api/search
+POST {VITE_API_BASE_URL}/api/search/stream
 ```
+
+AI 导航优先使用 `/api/search/stream` 接收检索、访问和核实等处理进度；若后端尚未提供该接口，
+会自动回退到原有 `/api/search`，最终回答的数据结构保持不变。
 
 资源搜索关键词与 AI 完整会话会写入浏览器 IndexedDB。访客记录属于当前设备；解锁本机档案后，记录按档案隔离。服务端不持久化这些历史，清除浏览器站点数据会永久删除它们。
 

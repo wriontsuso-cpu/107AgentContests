@@ -188,12 +188,6 @@ export function createIndexedDbAccountStore(options: { databaseName?: string } =
       const transaction = db.transaction(CONVERSATION_STORE, 'readwrite')
       const store = transaction.objectStore(CONVERSATION_STORE)
       store.put(stored)
-      const conversations = await requestResult(store.index('accountId').getAll(accountId) as IDBRequest<StoredConversation[]>)
-      const stale = conversations
-        .filter((item) => item.id !== stored.id)
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .slice(4)
-      for (const item of stale) store.delete(item.id)
       await transactionDone(transaction)
       return stored
     },

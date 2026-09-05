@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+import json
 import logging
+from queue import Queue
+from threading import Thread
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import load_knowledge_base_config, load_llm_config, load_web_config
@@ -71,6 +76,7 @@ class SearchResponse(BaseModel):
     answer: str
     session_id: str
     clarifications: list[str] = Field(default_factory=list)
+    response_type: Literal["navigation", "conversation"] = "navigation"
 
 
 class ResourceListResponse(BaseModel):
@@ -116,19 +122,10 @@ def create_app(
     app.state.navigation_service = service
     app.state.session_store = sessions
 
-    @app.get("/api/health", response_model=HealthResponse)
-    def health() -> HealthResponse:
-        llm_config = load_llm_config()
-        return HealthResponse(
-            status="ok",
-            llm_provider=llm_config.provider,
-            web_search_enabled=llm_config.web_search_enabled,
-            knowledge_base_provider=load_knowledge_base_config().provider,
-            resource_count=len(service.knowledge_base.resources),
-        )
-
-    @app.post("/api/search", response_model=SearchResponse)
-    def search(request: SearchRequest) -> SearchResponse:
+    def run_search(
+        request: SearchRequest,
+        progress_callback: Callable[[str, str], None] | None = None,
+    ) -> SearchResponse:
         query = request.query.strip()
         if not query:
             raise HTTPException(status_code=422, detail="query cannot be empty.")
@@ -150,6 +147,7 @@ def create_app(
                 category=request.category,
                 limit=request.top_k,
                 conversation=request_history or session.messages,
+                progress_callback=progress_callback,
             )
         except Exception:
             logger.exception("Answer verification failed; suppressing unverified candidates")
@@ -164,6 +162,67 @@ def create_app(
             answer=result.answer,
             session_id=session.id,
             clarifications=list(result.clarifications),
+            response_type=result.response_type,
+        )
+
+    @app.get("/api/health", response_model=HealthResponse)
+    def health() -> HealthResponse:
+        llm_config = load_llm_config()
+        return HealthResponse(
+            status="ok",
+            llm_provider=llm_config.provider,
+            web_search_enabled=llm_config.web_search_enabled,
+            knowledge_base_provider=load_knowledge_base_config().provider,
+            resource_count=len(service.knowledge_base.resources),
+        )
+
+    @app.post("/api/search", response_model=SearchResponse)
+    def search(request: SearchRequest) -> SearchResponse:
+        return run_search(request)
+
+    @app.post("/api/search/stream")
+    def search_stream(request: SearchRequest) -> StreamingResponse:
+        def event_stream() -> Iterator[str]:
+            events: Queue[dict[str, object] | None] = Queue()
+
+            def emit_progress(stage: str, message: str) -> None:
+                events.put({"type": "progress", "stage": stage, "message": message})
+
+            def worker() -> None:
+                try:
+                    response = run_search(request, emit_progress)
+                    payload = (
+                        response.model_dump()
+                        if hasattr(response, "model_dump")
+                        else response.dict()
+                    )
+                    events.put({"type": "result", "data": payload})
+                except HTTPException as exc:
+                    events.put({
+                        "type": "error",
+                        "status": exc.status_code,
+                        "message": str(exc.detail),
+                    })
+                except Exception:
+                    logger.exception("Streaming search failed")
+                    events.put({"type": "error", "status": 500, "message": "Search failed."})
+                finally:
+                    events.put(None)
+
+            Thread(target=worker, daemon=True).start()
+            while True:
+                event = events.get()
+                if event is None:
+                    break
+                yield json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @app.get("/api/resources", response_model=ResourceListResponse)

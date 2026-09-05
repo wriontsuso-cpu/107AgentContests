@@ -133,7 +133,7 @@ export function CloudSignedInView({
       </div>
       <div className="profile-status-card">
         <ShieldCheck aria-hidden="true" />
-        <div><strong>会话同步已开启</strong><p>最近同步 {conversationCount} / 5 次会话</p></div>
+        <div><strong>会话同步已开启</strong><p>已同步 {conversationCount} 次会话</p></div>
       </div>
       <div className="profile-account-actions">
         <button className="button button--secondary" type="button" onClick={onLogout}><LogOut size={18} aria-hidden="true" />退出登录</button>

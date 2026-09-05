@@ -5,6 +5,11 @@ This backend follows the repository-level `数据接口规范.md` contract and u
 
 ## Install And Run
 
+For first-time setup, model configuration and frontend integration, follow the
+Chinese instructions in the [root README](../README.md#组员首次在本机运行).
+The local `.env` is not included in Git; copy `.env.example` and configure a real
+provider, model and API key before testing resource answers.
+
 ```powershell
 cd PART_B
 pip install -r requirements.txt
@@ -19,12 +24,19 @@ The command-line interface remains available with `python main.py`.
 
 ```text
 POST /api/search
+POST /api/search/stream
 GET  /api/resources
 GET  /api/resources/{id}
 GET  /api/categories
 POST /api/sessions/{session_id}/exit
 GET  /api/health
 ```
+
+`POST /api/search/stream` accepts the same request body and returns newline-delimited
+JSON (`application/x-ndjson`). It emits `progress` records while the backend is
+retrieving and verifying sources, followed by one `result` record containing the
+same response object as `POST /api/search`. The non-streaming endpoint remains
+available for existing clients.
 
 The assistant request required by the shared specification is:
 
@@ -46,17 +58,26 @@ is insufficient, enabled web fallback may return backend-validated web records:
   "results": [],
   "answer": "基于数据库页面或可信网络来源的简要回答",
   "session_id": "generated-session-id",
-  "clarifications": []
+  "clarifications": [],
+  "response_type": "navigation"
 }
 ```
 
 `GET /api/resources` accepts `q`, `category`, `group`, `tag`, `page`, and
 `page_size`, matching the current frontend resource browser.
 
+Pure greetings, thanks, farewells and assistant identity questions return
+`response_type: "conversation"` with a short answer and empty resources and
+clarifications. They skip retrieval, page access and model calls, but remain in
+session history. Farewells do not close the session. Only a whole-message match
+in `frontend/src/data/raw/assistantSmallTalk.json` takes this route; greetings
+attached to resource questions still follow the normal verification pipeline.
+Pure social messages are excluded from later retrieval queries.
+
 ## Knowledge Base
 
 `JsonKnowledgeBase` loads the dataset once when the application starts. The
-current file declares 12882 rows; rows without the required title or URL are
+current published file contains 12382 rows in 39 categories; rows without the required title or URL are
 excluded during normalization. The adapter derives missing fields without
 modifying the source data:
 
@@ -65,9 +86,10 @@ modifying the source data:
 
 Search uses the same weighted fuzzy matcher as the static frontend: campus
 synonyms, pinyin aliases, edit-distance typos, field weights, and the
-`weight` / `relevance_score` stored on each record. It supports both the 32
+`weight` / `relevance_score` stored on each record. It supports both the 39
 source categories and the frontend's grouped categories.
-Every clickable result comes from this dataset. Unknown URLs emitted by a model
+Database result cards come from this dataset; trusted web fallback cards follow
+the separate citation checks described below. Unknown URLs emitted by a model
 are removed from the answer.
 
 `KNOWLEDGE_BASE_MIN_SCORE` is the high-relevance candidate threshold. Its default

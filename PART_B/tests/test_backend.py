@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -476,6 +477,78 @@ class JsonKnowledgeBaseTests(unittest.TestCase):
 
 
 class NavigationServiceTests(unittest.TestCase):
+    def test_progress_callback_reports_real_verification_stages(self) -> None:
+        llm_client = SequenceLLMClient((
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:VERIFY]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]"
+                ),
+            ),
+            LLMResponse(
+                text=(
+                    "[[DATABASE_VERDICT:EXACT]]\n"
+                    "[[DATABASE_PRIMARY_ID:resource-1]]\n"
+                    "页面说明可以预约学习空间。"
+                ),
+            ),
+        ))
+        updates: list[tuple[str, str]] = []
+        service = build_test_service(
+            llm_client,
+            page_reader=FakePageReader(),
+        )
+
+        service.answer(
+            "学习空间怎么预约",
+            progress_callback=lambda stage, message: updates.append((stage, message)),
+        )
+
+        stages = [stage for stage, _ in updates]
+        self.assertEqual(stages[:3], ["understanding", "database_search", "candidate_review"])
+        self.assertIn("page_fetch", stages)
+        self.assertIn("answer_verification", stages)
+
+    def test_small_talk_skips_search_model_and_page_access_even_with_history(self) -> None:
+        knowledge_base = FakeKnowledgeBase()
+        llm_client = SequenceLLMClient(())
+        page_reader = FakePageReader()
+        service = build_test_service(llm_client, knowledge_base, page_reader)
+
+        with (
+            patch.object(knowledge_base, "search", side_effect=AssertionError("Unexpected search")) as search,
+            patch.object(page_reader, "read", side_effect=AssertionError("Unexpected page read")) as read,
+        ):
+            for question in ("你好", "  您好呀！  ", "在吗？", "谢谢！", "好的，谢谢", "再见", "你能做什么？", "ＨＥＬＬＯ！", "Thank you"):
+                with self.subTest(question=question):
+                    result = service.answer(question, conversation=("用户：图书馆怎么预约",))
+                    self.assertEqual(result.response_type, "conversation")
+                    self.assertTrue(result.answer)
+                    self.assertNotIn("未检索到", result.answer)
+                    self.assertEqual(result.resources, ())
+                    self.assertEqual(result.clarifications, ())
+            search.assert_not_called()
+            read.assert_not_called()
+        self.assertEqual(llm_client.requests, [])
+
+    def test_greetings_attached_to_questions_still_use_resource_verification(self) -> None:
+        for question in ("你好，请问图书馆怎么预约？", "谢谢，图书馆预约时间呢？", "帮我找名为你好的活动", "好的", "继续"):
+            with self.subTest(question=question):
+                llm_client = FakeLLMClient()
+                service = build_test_service(llm_client)
+                result = service.answer(question, conversation=("用户：图书馆怎么预约",))
+                self.assertEqual(result.response_type, "navigation")
+                self.assertEqual(result.resources, (TEST_RESOURCE,))
+                self.assertIsNotNone(llm_client.last_request)
+                self.assertIn(question, llm_client.last_request.user_question)
+
+    def test_small_talk_is_excluded_from_retrieval_but_task_context_is_kept(self) -> None:
+        query = ResourceNavigationService._build_retrieval_query(
+            "那预约时间呢？",
+            ("用户：你好！", "用户：图书馆座位预约", "助手：请查看入口", "用户：谢谢", "用户：在吗", "用户：好的"),
+        )
+        self.assertEqual(query, "图书馆座位预约 好的 那预约时间呢？")
+
     def test_trusted_static_snapshot_skips_model_and_page_verification(self) -> None:
         llm_client = FakeLLMClient("不应被调用")
         service = build_test_service(
@@ -907,6 +980,40 @@ class NavigationServiceTests(unittest.TestCase):
 
 
 class WebApiTests(unittest.TestCase):
+    def test_streaming_search_emits_progress_and_result_events(self) -> None:
+        client = TestClient(create_app(build_test_service(), InMemorySessionStore()))
+
+        with client.stream("POST", "/api/search/stream", json={"query": "你好"}) as response:
+            events = [json.loads(line) for line in response.iter_lines() if line]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/x-ndjson")
+        self.assertEqual(events[0]["type"], "progress")
+        self.assertEqual(events[0]["stage"], "understanding")
+        self.assertEqual(events[-1]["type"], "result")
+        self.assertEqual(events[-1]["data"]["response_type"], "conversation")
+
+    def test_small_talk_is_saved_in_session_and_farewell_does_not_close_it(self) -> None:
+        sessions = InMemorySessionStore()
+        client = TestClient(create_app(build_test_service(FailingLLMClient()), sessions))
+
+        response = client.post("/api/search", json={"query": "你好"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["response_type"], "conversation")
+        self.assertEqual(payload["results"], [])
+        self.assertIn("你好", payload["answer"])
+        session_id = payload["session_id"]
+        self.assertIn("用户：你好", sessions.get(session_id).messages)
+
+        farewell = client.post("/api/search", json={"query": "再见", "session_id": session_id})
+        self.assertEqual(farewell.json()["response_type"], "conversation")
+        self.assertEqual(sessions.get(session_id).status, "active")
+        follow_up = client.post("/api/search", json={"query": "在吗", "session_id": session_id})
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertEqual(follow_up.json()["session_id"], session_id)
+        self.assertEqual(len(sessions.get(session_id).messages), 6)
+
     def test_browser_history_is_included_in_the_grounded_llm_request(self) -> None:
         llm_client = FakeLLMClient()
         client = TestClient(create_app(
@@ -944,6 +1051,7 @@ class WebApiTests(unittest.TestCase):
         )
         self.assertEqual(search_response.status_code, 200)
         payload = search_response.json()
+        self.assertEqual(payload["response_type"], "navigation")
         self.assertEqual(payload["results"][0]["id"], TEST_RESOURCE.id)
         self.assertEqual(payload["results"][0]["authority_label"], "职能部门官方")
         self.assertTrue(payload["session_id"])
